@@ -4,20 +4,7 @@
 
 ## Запуск
 
-Нужны Node.js 22.12+ и браузер с WebGL 2 для 3D-сцены.
-
-```bash
-npm ci
-npm run dev
-```
-
-Откройте адрес, который Vite выведет в терминале. Обычно это `http://localhost:5173`.
-
-```bash
-npm test         # Тесты Vitest
-npm run build    # Проверка типов и сборка dist/
-npm run preview  # Локальный просмотр production-сборки
-```
+https://patrolraven.github.io/universe-lab/#display-layers
 
 ## Статическая публикация
 
