@@ -6,7 +6,9 @@ export const sphereVertex = /* glsl */ `
   varying vec3 worldPosition;
   varying vec3 worldNormal;
   varying vec3 surface;
+  varying vec2 mapUv;
   void main() {
+    mapUv = uv;
     surface = normalize(position);
     worldPosition = (modelMatrix * vec4(position,1.)).xyz;
     worldNormal = normalize(mat3(modelMatrix) * normal);
@@ -25,6 +27,9 @@ export function surfaceMaterial(
       lights: { value: stellarPositions },
       lightColors: { value: stellarColors },
       angle: { value: 0 },
+      surfaceMap: { value: null as THREE.Texture | null },
+      mapped: { value: false },
+      selected: { value: false },
       style: { value: ['star', 'rock', 'gas', 'ice', 'terrestrial'].indexOf(appearance.kind) },
     },
     fragmentShader: noise + /* glsl */ `
@@ -32,16 +37,19 @@ export function surfaceMaterial(
       uniform vec3 lights[2], lightColors[2];
       uniform float angle;
       uniform int style;
+      uniform sampler2D surfaceMap;
+      uniform bool mapped, selected;
       varying vec3 worldPosition, worldNormal, surface;
+      varying vec2 mapUv;
       void main() {
         vec3 N = normalize(worldNormal);
         vec3 V = normalize(cameraPosition - worldPosition);
         vec3 p = vec3(surface.x*cos(angle)-surface.z*sin(angle),surface.y,surface.x*sin(angle)+surface.z*cos(angle));
-        float broad = fbm(p * 4. + 9.);
-        float fine = fbm(p * 22. - 6.);
         float limb = max(0.,dot(N,V));
         vec3 col;
         if (style == 0) {
+          float broad = fbm(p * 4. + 9.);
+          float fine = fbm(p * 22. - 6.);
           float cells = fbm(p * 15. + broad * 3. + 3.);
           float granules = mix(noise3(p * 76.), .5, smoothstep(.012,.048,length(fwidth(p))));
           float heat = .55*cells + .28*fine + .17*granules;
@@ -50,6 +58,12 @@ export function surfaceMaterial(
           col *= .90 + .21*limb;
           col += accent * pow(1. - limb, 4.) * .50;
         } else {
+          if (mapped) {
+            float longitude = mapUv.x + angle * .159154943 + (style == 4 ? .16 : 0.);
+            col = texture2D(surfaceMap, vec2(longitude, mapUv.y)).rgb;
+          } else {
+          float broad = fbm(p * 4. + 9.);
+          float fine = fbm(p * 22. - 6.);
           col = mix(dark, base, smoothstep(.27,.69,broad));
           if (style == 2 || style == 3) {
             float drift = fbm(p * vec3(5.,21.,5.) + vec3(6.,-3.,9.));
@@ -66,17 +80,21 @@ export function surfaceMaterial(
             col *= .72 + fine * .56;
             col = mix(col, accent, smoothstep(.55,.83,fine) * .34);
           }
-          vec3 lighting = vec3(.107,.119,.146);
+          }
+          vec3 lighting = mapped ? vec3(.19,.22,.28) : vec3(.107,.119,.146);
+          if (mapped && style == 4) lighting += vec3(.08,.12,.20) * limb;
           float reflectance = 0.;
           for(int i=0; i<2; i++) {
             vec3 L = normalize(lights[i] - worldPosition + vec3(.0001));
-            lighting += mix(lightColors[i], vec3(length(lightColors[i]) * .54), .26) * (1.08 * max(0., dot(N,L)));
-            reflectance += length(lightColors[i]) * pow(max(0., dot(N,normalize(L + V))),38.) * .085;
+            float day = smoothstep(-.12, .9, dot(N,L));
+            lighting += mix(lightColors[i], vec3(length(lightColors[i]) * .64), mapped ? .67 : .26) * (1.18 * day);
+            reflectance += length(lightColors[i]) * pow(max(0., dot(N,normalize(L + V))),38.) * (mapped ? .024 : .085);
           }
           col = col * lighting + reflectance;
           vec3 haze = style == 4 ? vec3(.11,.44,1.) : base;
           col += haze * pow(1. - limb, 4.) * (style == 4 ? .32 : .12);
         }
+        if (selected) col += vec3(.025,.29,.52) * pow(1. - limb, 5.);
         gl_FragColor = vec4(col,1.);
         #include <colorspace_fragment>
       }`,

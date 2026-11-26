@@ -99,7 +99,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark">${icon('logo', 24)}</div>
-          <div><h1>Universe<span> Lab</span></h1><p>Orbital laboratory</p></div>
+          <div><h1>Universe<span> Lab</span></h1></div>
         </div>
         <div class="top-system">
           <span class="mode-label">${icon('orbit', 16)}<span class="mode-simulation">Simulation</span><span class="mode-explorer">Earth Explorer</span></span>
@@ -128,6 +128,18 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             <div class="section-heading"><h2 class="section-label">Celestial bodies</h2><span id="object-count" class="count"></span></div>
             <div class="object-list" id="object-list"></div>
           </section>
+          <section class="display" id="display-layers" tabindex="-1" aria-labelledby="display-title">
+            <h2 id="display-title" class="section-label">Display layers</h2>
+            ${displays.map(item => `
+              <label class="display-row">
+                <span class="layer-icon">${icon(item.icon, 16)}</span><span>${item.title}</span>
+                <input type="checkbox" role="switch" data-layer="${item.key}" checked><span class="toggle"></span>
+              </label>`).join('')}
+          </section>
+          <div class="scene-credits" aria-label="Imagery sources">
+            <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">Sky: ESO/S. Brunier</a>
+            <a href="${import.meta.env.BASE_URL}planets/SOURCES.md" target="_blank" rel="noopener noreferrer">Planet imagery credits</a>
+          </div>
         </aside>
 
         <section id="viewport" class="viewport" aria-labelledby="view-title" tabindex="-1">
@@ -162,22 +174,21 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <div class="scene-error" id="scene-error" role="status" hidden></div>
         </section>
 
-        <aside class="inspector" id="inspector" aria-label="Object inspector and display" tabindex="-1">
-          <div class="section-heading"><h2 class="section-label">Object inspector</h2>${icon('focus', 16)}</div>
+        <aside class="inspector" id="inspector" aria-label="Selected object" tabindex="-1">
           <div class="object-card">
             <div class="object-heading" id="object-heading">
               <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
               <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
             </div>
-            <p id="profile-overview" class="profile-overview" hidden></p>
             <div class="object-actions">
               <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Focus camera</button>
               <button type="button" class="focus-button explore-earth" id="explore-earth" hidden>${icon('orbit', 17)} <span id="explore-earth-label">Explore Earth</span></button>
             </div>
             <p class="earth-entry-error" id="earth-entry-error" role="status" hidden></p>
           </div>
-          <section class="statistics" aria-labelledby="physical-title">
-            <h3 id="physical-title" class="section-label">Physical properties</h3>
+          <details class="statistics">
+            <summary class="section-label">Physical properties</summary>
+            <p id="profile-overview" class="profile-overview" hidden></p>
             <dl class="properties">
               <div><dt>Mass</dt><dd><span id="mass"></span> <small>M☉</small></dd></div>
               <div><dt>Radius</dt><dd><span id="radius"></span> <small>km</small></dd></div>
@@ -190,15 +201,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
               <div><dt>Y</dt><dd id="coordinate-y"></dd></div>
               <div><dt>Z</dt><dd id="coordinate-z"></dd></div>
             </dl>
-          </section>
-          <section class="display" id="display-layers" tabindex="-1" aria-labelledby="display-title">
-            <h3 id="display-title" class="section-label">Display layers</h3>
-            ${displays.map(item => `
-              <label class="display-row">
-                <span class="layer-icon">${icon(item.icon, 16)}</span><span>${item.title}</span>
-                <input type="checkbox" role="switch" data-layer="${item.key}" checked><span class="toggle"></span>
-              </label>`).join('')}
-          </section>
+          </details>
         </aside>
         ${earthReference()}
       </main>

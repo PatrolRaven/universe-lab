@@ -16,6 +16,10 @@ export interface Layers {
 
 const TRAIL_LENGTH = 256
 const MIN_CAMERA_DISTANCE = 0.4
+const solarRadius: Readonly<Record<string, number>> = {
+  sun: 0.74, mercury: 0.18, venus: 0.30, earth: 0.40, mars: 0.25,
+  jupiter: 0.76, saturn: 0.54, uranus: 0.40, neptune: 0.38,
+}
 const setBodyPosition = (point: THREE.Vector3, body: { position: number[] }) =>
   point.set(body.position[0], body.position[1], body.position[2])
 
@@ -82,6 +86,9 @@ export class SpaceScene {
   private readonly plane = new THREE.PlaneGeometry(2, 2)
   private readonly ring = new THREE.RingGeometry(1.3, 2.32, 112)
   private readonly sharedGeometries = new Set<THREE.BufferGeometry>([this.sphere, this.plane, this.ring])
+  private readonly surfaceMaps = new Map<string, THREE.Texture>()
+  private readonly loadingMaps = new Set<string>()
+  private readonly textureLoader = new THREE.TextureLoader()
   private activeScenario: Scenario | undefined
   private earthSession: EarthSession | undefined
   private readonly earthDirection = new THREE.Vector3()
@@ -112,7 +119,7 @@ export class SpaceScene {
     const context = canvas.getContext('webgl2', { antialias: true, alpha: false })
     if (!context) throw new Error('WebGL 2 is unavailable')
     this.renderer = new THREE.WebGLRenderer({ canvas, context })
-    this.sky = addSky(this.scene, this.renderer)
+    this.sky = addSky(this.scene, () => { this.dirty = true })
     this.renderer.domElement.className = 'space-canvas'
     this.renderer.domElement.setAttribute('aria-hidden', 'true')
     viewport.prepend(this.renderer.domElement)
@@ -174,16 +181,17 @@ export class SpaceScene {
   private createObject(spec: ObjectSpec, path: Float32Array) {
     const group = new THREE.Group()
     const { appearance } = spec
+    const radius = solarRadius[spec.id] ?? appearance.size
     const surface = new THREE.Mesh(this.sphere, surfaceMaterial(appearance, this.lightPositions, this.lightColors))
     surface.name = spec.id
-    surface.scale.setScalar(appearance.size)
+    surface.scale.setScalar(radius)
     group.add(surface)
 
     let halo: THREE.Mesh | null = null
     let light: THREE.PointLight | null = null
     if (appearance.kind === 'star') {
       halo = new THREE.Mesh(this.plane, haloMaterial(appearance.color))
-      halo.scale.setScalar(appearance.size * 10.8)
+      halo.scale.setScalar(radius * 10.8)
       halo.renderOrder = 2
       group.add(halo)
       light = new THREE.PointLight(appearance.accent, 1)
@@ -191,7 +199,7 @@ export class SpaceScene {
     }
     if (appearance.ring) {
       const ring = new THREE.Mesh(this.ring, ringMaterial(appearance))
-      ring.scale.setScalar(appearance.size)
+      ring.scale.setScalar(radius)
       ring.rotation.set(-1.75, -0.32, 0)
       group.add(ring)
     }
@@ -224,7 +232,39 @@ export class SpaceScene {
     this.contents.add(group, orbit, trail)
     const labelBox = { x: 0, y: 0, width: spec.profile.name.length * 6.1 + 14, visible: false }
     const disc = { x: 0, y: 0, radius: 0 }
-    return { spec, group, surface, light, halo, orbit, trail, history, trailHistory, addHistoryRange, label, labelBox, disc }
+    return { spec, radius, group, surface, light, halo, orbit, trail, history, trailHistory, addHistoryRange, label, labelBox, disc }
+  }
+
+  private loadSolarMaps() {
+    for (const visual of this.visuals) {
+      const { id } = visual.spec
+      if (id === 'sun' || !Object.hasOwn(solarRadius, id)) continue
+      const install = (target: Visual, texture: THREE.Texture) => {
+        target.surface.material.uniforms.surfaceMap.value = texture
+        target.surface.material.uniforms.mapped.value = true
+        this.dirty = true
+      }
+      const cached = this.surfaceMaps.get(id)
+      if (cached) {
+        install(visual, cached)
+        continue
+      }
+      if (this.loadingMaps.has(id)) continue
+      this.loadingMaps.add(id)
+      this.textureLoader.load(import.meta.env.BASE_URL + 'planets/' + id + '.webp', texture => {
+        this.loadingMaps.delete(id)
+        if (this.lifecycle.signal.aborted) {
+          texture.dispose()
+          return
+        }
+        texture.colorSpace = THREE.SRGBColorSpace
+        texture.wrapS = THREE.RepeatWrapping
+        texture.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy())
+        this.surfaceMaps.set(id, texture)
+        const target = this.visuals.find(body => body.spec.id === id)
+        if (target) install(target, texture)
+      }, undefined, () => this.loadingMaps.delete(id))
+    }
   }
 
   load(scenario: Scenario, simulation: Simulation) {
@@ -254,6 +294,8 @@ export class SpaceScene {
     this.renderedTime = -Infinity
     this.sampleTime = -Infinity
     this.frame = scenario.frame
+    this.direction.set(0, scenario.id === 'solar' ? 0.58 : 0.72, scenario.id === 'solar' ? 0.81 : 0.69).normalize()
+    if (scenario.id === 'solar') this.loadSolarMaps()
     this.sampleTrails(simulation)
     this.setLayers(this.layers)
     this.overview(true)
@@ -265,6 +307,7 @@ export class SpaceScene {
     this.labelOrder.sort((a, b) => priority(b) - priority(a))
     for (const visual of this.visuals) {
       const selected = visual.spec.id === id
+      visual.surface.material.uniforms.selected.value = selected
       visual.label.classList.toggle('selected', selected)
       visual.label.setAttribute('aria-pressed', String(selected))
       visual.orbit.material.color.set(selected ? '#66dce9' : '#658bab')
@@ -298,7 +341,7 @@ export class SpaceScene {
     if (this.earthSession) return
     this.focused = this.visuals.find(visual => visual.spec.id === id)
     if (!this.focused) return
-    this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.spec.appearance.size * 1.18)
+    this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.radius * 1.18)
     this.anchor.copy(this.focused.group.position)
     this.view = 'focus'
     this.transition = true
@@ -327,7 +370,7 @@ export class SpaceScene {
     const earth = this.visuals.find(visual => visual.spec.id === 'earth')
     const detail = earth?.spec.detail
     if (!earth || !detail?.surfaceMap) return
-    const globe = new EarthGlobe(earth.spec.appearance.size, detail)
+    const globe = new EarthGlobe(earth.radius, detail)
     const savedFocus = this.view === 'focus' ? this.focused : undefined
     const savedPosition = this.camera.position.clone()
     const savedTarget = this.controls.target.clone()
@@ -453,7 +496,7 @@ export class SpaceScene {
     this.camera.position.copy(session.from).add(position)
     this.controls.target.copy(session.fromTarget).add(position)
     if (entering) {
-      const radius = session.earth.spec.appearance.size
+      const radius = session.earth.radius
       const distance = radius * 3.5 / Math.min(1, this.camera.aspect)
       this.earthDirection.copy(session.globe.direction).multiplyScalar(0.83)
       this.earthDirection.y += 0.54
@@ -507,7 +550,7 @@ export class SpaceScene {
     if (this.earthSession?.state === 'exploring') {
       const scale = Math.min(1, previousAspect) / Math.min(1, this.camera.aspect)
       this.camera.position.sub(this.controls.target).multiplyScalar(scale).add(this.controls.target)
-      this.controls.maxDistance = Math.max(1.75, this.earthSession.earth.spec.appearance.size * 3.5 / Math.min(1, this.camera.aspect))
+      this.controls.maxDistance = Math.max(1.75, this.earthSession.earth.radius * 3.5 / Math.min(1, this.camera.aspect))
       this.updateControls(0)
       return
     }
@@ -550,7 +593,7 @@ export class SpaceScene {
       let distance = this.overviewDistance()
       if (focused) {
         this.aim.copy(focused.group.position)
-        distance = Math.max(1.15, focused.spec.appearance.size * 7) / Math.min(1, this.camera.aspect)
+        distance = Math.max(1.15, focused.radius * 7) / Math.min(1, this.camera.aspect)
       }
       const ease = this.reducedMotion.matches ? 1 : 1 - Math.exp(-8 * deltaSeconds)
       this.cameraOffset.copy(this.direction).multiplyScalar(distance).add(this.aim)
@@ -604,12 +647,12 @@ export class SpaceScene {
   private positionLabels() {
     const { width, height } = this
     const pixelScale = height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)))
-    for (const { group, disc, labelBox, spec } of this.labelOrder) {
+    for (const { group, disc, labelBox, radius } of this.labelOrder) {
       labelBox.visible = false
       this.projected.copy(group.position).applyMatrix4(this.camera.matrixWorldInverse)
       const depth = -this.projected.z
       this.projected.applyMatrix4(this.camera.projectionMatrix)
-      disc.radius = depth > this.camera.near && depth < this.camera.far ? pixelScale * spec.appearance.size / depth : 0
+      disc.radius = depth > this.camera.near && depth < this.camera.far ? pixelScale * radius / depth : 0
       disc.x = (this.projected.x * 0.5 + 0.5) * width
       disc.y = (0.5 - this.projected.y * 0.5) * height
     }
@@ -667,6 +710,8 @@ export class SpaceScene {
     this.finishExplorer()
     this.resizeObserver.disconnect()
     this.lifecycle.abort()
+    for (const texture of this.surfaceMaps.values()) texture.dispose()
+    this.surfaceMaps.clear()
     this.controls.dispose()
     disposeTree(this.scene, this.sharedGeometries)
     for (const geometry of this.sharedGeometries) geometry.dispose()

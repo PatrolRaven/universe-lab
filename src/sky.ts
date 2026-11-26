@@ -27,63 +27,31 @@ function random() {
   return seed / 4294967296
 }
 
-function renderNebula(renderer: THREE.WebGLRenderer) {
-  const background = new THREE.WebGLRenderTarget(1024, 512, {
-    depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+export function addSky(scene: THREE.Scene, onReady: () => void) {
+  // Tilt the surveyed galactic plane across the default Solar System view.
+  const forward = new THREE.Vector3(0, -.58, -.81).normalize()
+  const right = new THREE.Vector3(1, 0, 0)
+  const up = new THREE.Vector3().crossVectors(right, forward)
+  const north = up.multiplyScalar(.86).addScaledVector(right, -.49).addScaledVector(forward, -.15).normalize()
+  const east = new THREE.Vector3().crossVectors(forward, north).normalize()
+  const center = new THREE.Vector3().crossVectors(north, east)
+  const ready = { value: 0 }
+  let disposed = false
+  const background = new THREE.TextureLoader().load(import.meta.env.BASE_URL + 'sky/milky-way.webp', () => {
+    if (disposed) return
+    ready.value = 1
+    onReady()
   })
-  const stage = new THREE.Scene()
-  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-    vertexShader: /* glsl */ `
-      varying vec2 sampleUv;
-      void main() {
-        sampleUv = uv;
-        gl_Position = vec4(position.xy, 0., 1.);
-      }`,
-    fragmentShader: noise + /* glsl */ `
-      varying vec2 sampleUv;
-      void main() {
-        float azimuth = sampleUv.x * 6.2831853;
-        float polar = (1. - sampleUv.y) * 3.1415927;
-        vec3 d = vec3(-cos(azimuth) * sin(polar), cos(polar), sin(azimuth) * sin(polar));
-        // Bake the dust lanes and their embedded star field once, not per frame.
-        float plane = dot(d, normalize(vec3(-.56,.60,-.57)));
-        float cloud = fbm(d * 8. + vec3(3.,5.,-9.));
-        float band = plane - .13 + (cloud - .5) * .23;
-        vec3 stretched = d + vec3(-.56,.60,-.57) * plane * 2.6;
-        float filament = fbm(stretched * 29. + vec3(4.,-2.,7.));
-        float density = smoothstep(.26,.76,cloud * .66 + filament * .47);
-        float core = exp(-band * band * 101.);
-        float glow = exp(-band * band * 17.);
-        float lane = exp(-pow(abs(band + .021 + (filament - .5) * .11) * 23., 2.));
-        float clear = 1. - .79 * lane;
-        float warm = pow(max(0., dot(d, normalize(vec3(.33,-.39,-.86)))), 45.);
-        float cool = pow(max(0., dot(d, normalize(vec3(-.51,-.72,-.47)))), 18.);
-        float pin = pow(smoothstep(.44,1.,noise3(d * 232.)), 7.) * density;
-        vec3 col = vec3(.009,.017,.036) + vec3(.014,.027,.061) * glow * cloud;
-        col += glow * density * vec3(.036,.062,.130);
-        col += core * density * clear * vec3(.105,.101,.237);
-        col += core * clear * density * cool * vec3(.026,.109,.22);
-        col += warm * glow * (.38 + .62 * clear) * density * vec3(.43,.196,.097);
-        col += pin * glow * vec3(.29,.37,.63);
-        gl_FragColor = vec4(col, 1.);
-      }`,
-  }))
-  quad.frustumCulled = false
-  stage.add(quad)
-  renderer.setRenderTarget(background)
-  renderer.render(stage, new THREE.Camera())
-  renderer.setRenderTarget(null)
-  quad.material.dispose()
-  quad.geometry.dispose()
-  return background
-}
+  background.wrapS = THREE.RepeatWrapping
+  background.anisotropy = 2
+  background.addEventListener('dispose', () => { disposed = true })
 
-export function addSky(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
-  const background = renderNebula(renderer)
   const sky = new THREE.Mesh(new THREE.SphereGeometry(164, 48, 24), new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
-    uniforms: { effects: { value: 1 }, nebula: { value: background.texture } },
+    uniforms: {
+      effects: { value: 1 }, ready, nebula: { value: background },
+    },
     vertexShader: /* glsl */ `
       varying vec2 sampleUv;
       void main() {
@@ -91,14 +59,26 @@ export function addSky(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
       }`,
     fragmentShader: /* glsl */ `
-      uniform float effects;
+      uniform float effects, ready;
       uniform sampler2D nebula;
       varying vec2 sampleUv;
       void main() {
-        vec3 col = mix(vec3(.009,.017,.036), texture2D(nebula, sampleUv).rgb, effects);
+        vec3 col = vec3(.006,.012,.027);
+        if (effects > .0 && ready > .0) {
+          float latitude = (sampleUv.y - .5) * 3.1415927;
+          float longitude = (.5 - sampleUv.x) * 6.2831853;
+          vec3 photo = texture2D(nebula, vec2(.938 - sampleUv.x, sampleUv.y)).rgb;
+          float luma = dot(photo, vec3(.2126,.7152,.0722));
+          float violet = smoothstep(-.26,.36,sin(longitude));
+          vec3 tint = mix(vec3(.30,.59,1.05), vec3(.80,.50,.98), violet);
+          vec3 starlight = pow(mix(vec3(luma), photo, .55), vec3(1.12));
+          float arm = exp(-latitude * latitude * 24.);
+          col += (starlight * tint * .86 + vec3(.014,.027,.067) * arm) * effects;
+        }
         gl_FragColor = vec4(col, 1.);
       }`,
   }))
+  sky.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(center, north, east))
   sky.renderOrder = -3
   scene.add(sky)
 
