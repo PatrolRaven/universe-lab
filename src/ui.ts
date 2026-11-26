@@ -3,6 +3,7 @@ import type { Body } from './physics'
 import type { Layers } from './scene'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
 import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
+import { catalogEntries, createLibrary, type CatalogEntry } from './library'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -46,6 +47,8 @@ interface Actions {
   upgradePlanetSurface: () => void
   planetCameraKey: (key: string) => boolean
   escapeExplorer: () => boolean
+  navigate: (view: 'simulation' | 'library') => void
+  openCatalogEntry: (entry: CatalogEntry, explore: boolean) => void
 }
 
 function planetReference(profile: ExplorerProfile, name: string) {
@@ -61,8 +64,10 @@ function planetReference(profile: ExplorerProfile, name: string) {
         <dl class="planet-values">${profile.properties.map(([label, value]) =>
           '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('')}</dl>
       </details>
-      <details><summary>Поверхность и строение</summary><p>${profile.surface}</p></details>
+      <details><summary>Поверхность</summary><p>${profile.surface}</p></details>
       <details><summary>Атмосфера</summary><p>${profile.atmosphere}</p></details>
+      <details><summary>Внутреннее строение</summary><p>${profile.interior}</p></details>
+      <details><summary>Интересный факт</summary><p>${profile.fact}</p></details>
       <details><summary>История исследований</summary><dl class="planet-history">${profile.history.map(([date, description]) =>
         '<div><dt>' + date + '</dt><dd>' + description + '</dd></div>').join('')}</dl></details>
       <details><summary>Источники и изображения</summary><ul>${links(profile.references)}${links(profile.imagery)}</ul></details>
@@ -80,7 +85,7 @@ const coordinate = (value: number) => precise.format(Math.abs(value) < 0.0005 ? 
 export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Actions) {
   const scenarioIcons: Icon[] = ['sun', 'binary', 'sandbox']
   root.innerHTML = `
-    <a class="skip-link" href="#body-selector">Перейти к выбору небесных тел</a>
+    <a class="skip-link" id="skip-region" href="#body-selector">Перейти к выбору небесных тел</a>
     <div class="laboratory">
       <header class="topbar">
         <div class="brand">
@@ -92,10 +97,13 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <span class="top-slash" aria-hidden="true">${icon('arrow', 12)}</span>
           <span id="top-system"></span>
         </div>
-
+        <nav class="main-nav" id="main-nav" aria-label="Разделы лаборатории">
+          <button class="planet-action" id="nav-simulation" type="button" aria-current="page">Симуляция</button>
+          <button class="planet-action" id="nav-library" type="button">Библиотека</button>
+        </nav>
       </header>
 
-      <main class="workspace" aria-label="Орбитальная симуляция">
+      <main class="workspace" id="workspace" aria-label="Орбитальная симуляция">
         <aside class="catalog" aria-label="Сценарии и слои">
           <section class="scenario-section">
             <h2 class="section-label">Сценарии</h2>
@@ -128,7 +136,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           </div>
           <div class="planet-toolbar" id="planet-toolbar" hidden>
             <div class="planet-toolbar-actions">
-              <button class="planet-action" type="button" id="planet-back">${icon('back', 16)} К системе</button>
+              <button class="planet-action" type="button" id="planet-back">${icon('back', 16)} <span id="planet-back-label">К системе</span></button>
               <button class="planet-action" type="button" id="planet-info-toggle" aria-controls="planet-panel" aria-expanded="false" hidden>${icon('info', 16)} Справка о планете</button>
             </div>
             <h2 id="planet-view-title">Исследование планеты</h2>
@@ -183,6 +191,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
         <aside class="planet-panel" id="planet-panel" aria-labelledby="planet-panel-title" hidden></aside>
       </main>
 
+      <main class="library" id="library" aria-labelledby="library-title" hidden></main>
+
       <footer class="body-selector" id="body-selector" aria-label="Небесные тела"></footer>
     </div>`
 
@@ -193,6 +203,12 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   }
 
   const viewport = node('viewport')
+  const workspace = node('workspace')
+  const nav = node('main-nav')
+  const navSimulation = node<HTMLButtonElement>('nav-simulation')
+  const navLibrary = node<HTMLButtonElement>('nav-library')
+  const libraryElement = node('library')
+  const skip = node<HTMLAnchorElement>('skip-region')
   const labels = node('viewport-labels')
   const error = node('scene-error')
   const bodySelector = node('body-selector')
@@ -219,6 +235,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const planetViewTitle = node('planet-view-title')
   const planetKeyHelp = node('planet-key-help')
   const planetBack = node<HTMLButtonElement>('planet-back')
+  const planetBackLabel = node('planet-back-label')
   const planetToggle = node<HTMLButtonElement>('planet-info-toggle')
   const planetPanel = node('planet-panel')
   const planetQuality = node<HTMLButtonElement>('planet-quality')
@@ -234,13 +251,16 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   let selectedId = ''
   let explorerError = ''
   let selectedSpec: ObjectSpec | undefined
+  let libraryOpen = false
+  const library = createLibrary(libraryElement, catalogEntries(scenarios), actions.openCatalogEntry, signal)
+  navSimulation.addEventListener('click', () => actions.navigate('simulation'), { signal })
+  navLibrary.addEventListener('click', () => actions.navigate('library'), { signal })
 
   function updateExploreButton() {
     const profile = explorerProfiles[selectedId]
     explore.hidden = !profile || !selectedSpec?.detail?.surfaceMap || explorerState !== 'overview'
     const canRetry = !explore.hidden && Boolean(explorerError)
     exploreLabel.textContent = canRetry ? 'Повторить загрузку' : 'Исследовать'
-    if (profile && selectedSpec) planetPanel.innerHTML = planetReference(profile, selectedSpec.profile.name)
     planetEntryError.textContent = canRetry ? explorerError : ''
     planetEntryError.hidden = !canRetry
   }
@@ -284,11 +304,30 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     }
     if (event.target instanceof Element
       && event.target.closest('button, input, textarea, select, a, summary, [contenteditable]')) return
-    if (event.code === 'KeyH') actions.overview()
+    if (event.code === 'KeyH' && !libraryOpen) actions.overview()
   }, { signal })
 
   return {
     viewport, labels,
+    navigate(view: 'simulation' | 'library', focusTarget?: 'navigation' | 'restore' | 'scene') {
+      libraryOpen = view === 'library'
+      root.dataset.view = view
+      workspace.hidden = bodySelector.hidden = libraryOpen
+      libraryElement.hidden = !libraryOpen
+      const current = libraryOpen ? navLibrary : navSimulation
+      const other = libraryOpen ? navSimulation : navLibrary
+      current.setAttribute('aria-current', 'page')
+      other.removeAttribute('aria-current')
+      skip.href = libraryOpen ? '#library-title' : '#body-selector'
+      skip.textContent = libraryOpen ? 'Перейти к библиотеке' : 'Перейти к выбору небесных тел'
+      if (focusTarget && libraryOpen) library.focus(focusTarget === 'restore')
+      else if (focusTarget === 'navigation') navSimulation.focus({ preventScroll: true })
+      else if (focusTarget === 'scene') {
+        viewport.focus({ preventScroll: true })
+        viewport.scrollIntoView({ block: 'nearest' })
+      }
+    },
+    libraryError: library.error,
     scenario(scenario: Scenario) {
       topSystem.textContent = scenario.name
       viewTitle.textContent = scenario.name
@@ -308,6 +347,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     selected(spec: ObjectSpec) {
       selectedId = spec.id
       selectedSpec = spec
+      const information = explorerProfiles[spec.id]
+      planetPanel.innerHTML = information ? planetReference(information, spec.profile.name) : ''
       updateExploreButton()
       for (const button of bodySelector.querySelectorAll<HTMLButtonElement>('[data-body]')) {
         button.setAttribute('aria-pressed', String(button.dataset.body === spec.id))
@@ -332,7 +373,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       y.textContent = coordinate(body.position[1])
       z.textContent = coordinate(body.position[2])
     },
-    explorer(state: ExplorerState, panelOpen: boolean, quality: ExplorerQuality, errorMessage = '') {
+    explorer(state: ExplorerState, panelOpen: boolean, quality: ExplorerQuality, errorMessage = '', fromLibrary = false) {
       const previous = explorerState
       const wasInsidePanel = planetPanel.contains(document.activeElement)
       const wasInsideExplorer = wasInsidePanel || planetToolbar.contains(document.activeElement) || document.activeElement === viewport
@@ -341,6 +382,9 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       explorerError = errorMessage
       planetViewTitle.textContent = selectedSpec ? 'Исследование: ' + selectedSpec.profile.name : 'Исследование планеты'
       const active = state !== 'overview'
+      nav.hidden = active
+      skip.href = active ? '#viewport' : '#body-selector'
+      skip.textContent = active ? 'Перейти к сцене планеты' : 'Перейти к выбору небесных тел'
       const panelVisible = state === 'exploring' && panelOpen
       root.dataset.planetState = state
       root.dataset.planet = selectedId
@@ -355,13 +399,14 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       planetToggle.hidden = state !== 'exploring'
       planetToggle.setAttribute('aria-expanded', String(panelVisible))
       planetBack.setAttribute('aria-disabled', String(state === 'exiting'))
+      planetBackLabel.textContent = fromLibrary ? 'К библиотеке' : 'К системе'
       planetQuality.hidden = state !== 'exploring' || quality === 'unavailable' || quality === 'high'
       if (planetQuality.hidden && qualityHadFocus && state === 'exploring') planetToggle.focus({ preventScroll: true })
       planetQuality.setAttribute('aria-disabled', String(quality === 'loading'))
       planetQuality.textContent = quality === 'loading' ? 'Загрузка 4K…' : 'Загрузить поверхность 4K'
       const planet = selectedSpec?.profile.name ?? 'планеты'
       planetStatus.textContent = errorMessage
-        || (state === 'entering' ? `Загрузка поверхности: ${planet}…` : state === 'exiting' ? 'Возврат к Солнечной системе…' : '')
+        || (state === 'entering' ? `Подготовка обзора: ${planet}…` : state === 'exiting' ? 'Возвращаемся к предыдущему разделу…' : '')
       planetStatus.hidden = !active || !planetStatus.textContent
       updateExploreButton()
       if (previous === 'overview' && active) {
@@ -373,7 +418,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       }
       if (wasInsidePanel && !panelVisible && state === 'exploring') planetToggle.focus({ preventScroll: true })
       if (previous !== 'exiting' && state === 'exiting') planetBack.focus({ preventScroll: true })
-      if (previous !== 'overview' && !active && wasInsideExplorer && !explore.hidden) {
+      if (previous !== 'overview' && !active && !fromLibrary && wasInsideExplorer && !explore.hidden) {
         explore.focus({ preventScroll: true })
         if (matchMedia('(max-width: 850px)').matches) explore.scrollIntoView({ block: 'nearest' })
       }
@@ -385,6 +430,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       focus.disabled = true
       overview.disabled = true
       explore.disabled = true
+      library.error(message)
       for (const input of layerInputs) input.disabled = true
     },
     dispose() { lifecycle.abort() },

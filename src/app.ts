@@ -5,6 +5,7 @@ import { Simulation } from './physics'
 import { SpaceScene } from './scene'
 import { createUI } from './ui'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
+import type { CatalogEntry } from './library'
 
 let scenario = scenarios[0]
 let simulation = new Simulation(scenario.objects)
@@ -17,6 +18,8 @@ let explorerState: ExplorerState = 'overview'
 let explorerQuality: ExplorerQuality = 'unavailable'
 let explorerError: string | undefined
 let explorerPanel = false
+let view: 'simulation' | 'library' = 'simulation'
+let libraryLaunch: { scenario: Scenario; simulation: Simulation; selectedId: string } | undefined
 let frame = 0
 
 const ui = createUI(document.querySelector('#app')!, scenarios, {
@@ -40,6 +43,8 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   toggleExplorerPanel,
   upgradePlanetSurface: () => scene?.upgradePlanetSurface(),
   planetCameraKey: key => scene?.planetCameraKey(key) ?? false,
+  navigate,
+  openCatalogEntry,
   escapeExplorer: () => {
     if (explorerState === 'overview') return false
     if (explorerState === 'exploring' && explorerPanel) toggleExplorerPanel()
@@ -48,10 +53,31 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   },
 })
 
+function navigate(next: typeof view, focusTarget: 'navigation' | 'restore' | 'scene' = 'navigation') {
+  if (explorerState !== 'overview' || next === view) return
+  view = next
+  ui.navigate(next, focusTarget)
+  if (next === 'simulation') scene?.resize()
+}
+
+function openCatalogEntry(entry: CatalogEntry, explore: boolean) {
+  if (!scene) {
+    ui.libraryError('Для открытия 3D-сцены нужна поддержка WebGL 2. Проверьте аппаратное ускорение браузера.')
+    return
+  }
+  if (explore) libraryLaunch = { scenario, simulation, selectedId: scenario.objects[selected].id }
+  ui.libraryError('')
+  navigate('simulation', 'scene')
+  if (entry.scenario !== scenario) load(entry.scenario)
+  select(entry.body.id)
+  if (explore) scene.explorePlanet(entry.body.id)
+  else scene.focus(entry.body.id)
+}
+
 function toggleExplorerPanel() {
   if (explorerState !== 'exploring') return
   explorerPanel = !explorerPanel
-  ui.explorer(explorerState, explorerPanel, explorerQuality, explorerError)
+  ui.explorer(explorerState, explorerPanel, explorerQuality, explorerError, Boolean(libraryLaunch))
 }
 
 function updateExplorer(state: ExplorerState, quality: ExplorerQuality, error?: string) {
@@ -62,7 +88,15 @@ function updateExplorer(state: ExplorerState, quality: ExplorerQuality, error?: 
   explorerState = state
   explorerQuality = quality
   explorerError = error
-  ui.explorer(state, explorerPanel, quality, error)
+  ui.explorer(state, explorerPanel, quality, error, Boolean(libraryLaunch))
+  if (state === 'overview' && libraryLaunch) {
+    const previous = libraryLaunch
+    libraryLaunch = undefined
+    if (previous.scenario !== scenario) load(previous.scenario, previous.simulation)
+    select(previous.selectedId)
+    ui.libraryError(error ?? '')
+    navigate('library', 'restore')
+  }
 }
 
 function updateReadings() {
@@ -72,18 +106,17 @@ function updateReadings() {
 function select(id: string) {
   const index = scenario.objects.findIndex(body => body.id === id)
   if (index < 0) return
-  if (id !== 'earth' && id !== 'mars' && explorerState !== 'overview') scene?.exitExplorer()
+  if (explorerState !== 'overview') return
   selected = index
   ui.selected(scenario.objects[index])
   scene?.select(id)
   updateReadings()
 }
 
-function load(next: Scenario, initial = false) {
-  const changed = initial || next !== scenario
+function load(next: Scenario, state = new Simulation(next.objects)) {
   scenario = next
-  if (!initial) simulation = new Simulation(scenario.objects)
-  if (changed) ui.scenario(scenario)
+  simulation = state
+  ui.scenario(scenario)
   scene?.load(scenario, simulation)
   select(scenario.selection)
   clock.rebase(performance.now())
@@ -93,13 +126,14 @@ try {
   scene = new SpaceScene(ui.viewport, ui.labels, select, () => {
     scene?.dispose()
     scene = undefined
+    if (explorerState !== 'overview') updateExplorer('overview', 'unavailable')
     ui.sceneError('Графический контекст потерян. Перезагрузите страницу, чтобы восстановить 3D-сцену.')
   }, updateExplorer)
 } catch (error) {
   if (!(error instanceof Error) || error.message !== 'WebGL 2 is unavailable') throw error
   ui.sceneError('Включите аппаратное ускорение или откройте лабораторию в браузере с поддержкой WebGL 2.')
 }
-load(scenario, true)
+load(scenario, simulation)
 
 function sampleTrails() {
   scene?.sampleTrails(simulation)
@@ -116,7 +150,7 @@ function animate(now: number) {
   const cameraDelta = Math.min(Math.max(0, (now - previousFrame) / 1000), 0.06)
   previousFrame = now
   advanceClock(now)
-  scene?.render(simulation, cameraDelta)
+  if (view === 'simulation') scene?.render(simulation, cameraDelta)
   if (now - lastReadings > 75) {
     updateReadings()
     lastReadings = now

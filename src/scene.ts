@@ -296,6 +296,7 @@ export class SpaceScene {
     this.frame = scenario.frame
     this.direction.set(0, scenario.id === 'solar' ? 0.58 : 0.72, scenario.id === 'solar' ? 0.81 : 0.69).normalize()
     if (scenario.id === 'solar') this.loadSolarMaps()
+    this.updatePositions(simulation)
     this.sampleTrails(simulation)
     this.setLayers(this.layers)
     this.overview(true)
@@ -396,6 +397,7 @@ export class SpaceScene {
     this.transition = false
     this.controls.enabled = false
     this.controls.enablePan = false
+    this.controls.minDistance = Math.min(session.minDistance, planet.radius * 1.55)
     planet.group.add(globe.mesh)
     this.notifyExplorer(session)
     void globe.loadBase().then(() => {
@@ -492,6 +494,12 @@ export class SpaceScene {
     }
     const previous = session.progress
     const entering = session.state === 'entering'
+    if (entering && !session.ready) return false
+    if (entering && previous === 0) {
+      // The planet keeps moving while its surface map loads.
+      session.from.copy(this.camera.position).sub(position)
+      session.fromTarget.copy(this.controls.target).sub(position)
+    }
     session.progress = this.reducedMotion.matches ? 1 : Math.min(1, previous + seconds / 0.84)
     const t = session.progress * session.progress * (3 - 2 * session.progress)
     this.camera.position.copy(session.from).add(position)
@@ -505,7 +513,7 @@ export class SpaceScene {
       this.planetArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
       this.controls.target.lerp(position, t)
       this.updateControls(seconds)
-      if (session.progress === 1 && session.ready) {
+      if (session.progress === 1) {
         this.anchor.copy(position)
         this.controls.minDistance = radius * 1.55
         this.controls.maxDistance = Math.max(1.75, distance)
@@ -536,11 +544,14 @@ export class SpaceScene {
     return this.frame * 2.04 / Math.min(1, this.camera.aspect / 1.08)
   }
 
-  private resize() {
+  resize() {
+    const width = this.viewport.clientWidth
+    const height = this.viewport.clientHeight
+    if (width === 0 || height === 0) return
     this.dirty = true
     const previousOverview = this.overviewDistance()
-    this.width = Math.max(1, this.viewport.clientWidth)
-    this.height = Math.max(1, this.viewport.clientHeight)
+    this.width = width
+    this.height = height
     const ratio = Math.min(window.devicePixelRatio || 1, 1.65)
     this.renderer.setPixelRatio(ratio)
     this.renderer.setSize(this.width, this.height, false)

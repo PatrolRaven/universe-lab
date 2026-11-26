@@ -407,7 +407,7 @@ svg { flex-shrink: 0; vertical-align: middle; }
 #app:is([data-planet-state="entering"], [data-planet-state="exploring"]) .inspector { display: none; }
 #app:is([data-planet-state="entering"], [data-planet-state="exploring"], [data-planet-state="exiting"]) .body-selector { display: none; }
 
-@media (min-width: 851px) {
+@media (width > 850px) {
   #app:is([data-planet-state="entering"], [data-planet-state="exploring"], [data-planet-state="exiting"]) .catalog {
     display: none;
   }
@@ -451,6 +451,49 @@ svg { flex-shrink: 0; vertical-align: middle; }
 @keyframes earth-sheet-in {
   from { opacity: .6; transform: translateY(14px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.main-nav { display: flex; gap: 6px; margin-inline-start: auto; }
+.main-nav .planet-action[aria-current="page"] { background: var(--selected); border-color: #28718e; color: var(--accent-bright); }
+#app:has(.main-nav:not([hidden])) :is(.mode-label, .top-slash),
+#app[data-view="library"] .top-system { display: none; }
+#app[data-view="library"] .laboratory { grid-template-rows: 70px minmax(0, 1fr); }
+.library { grid-row: 2; min-width: 0; min-height: 0; overflow: auto; }
+.library-content { width: min(1080px, 100%); margin-inline: auto; padding: clamp(22px, 5vw, 66px) clamp(16px, 4vw, 50px) 40px; }
+.library-heading h2 { font: 600 clamp(32px, 5vw, 58px)/1.05 var(--display); text-wrap: balance; }
+.library-heading p { margin-top: 12px; color: var(--muted); line-height: 1.55; }
+.library-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 210px); gap: 14px; margin-top: 30px; }
+.library-filters label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: #d9e8f5; }
+.library-filters :is(input, select) {
+  min-width: 0; width: 100%; min-height: 44px; padding: 8px 11px; border-radius: var(--r-small);
+  border: 1px solid var(--edge); color: inherit; background: var(--panel); font: inherit;
+}
+.library-filters input::placeholder { color: var(--muted); }
+.library-results { margin-block: 20px 12px; font-size: 13px; color: var(--muted); }
+.library-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 0; margin: 0; list-style: none; }
+.library-item { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--edge); border-radius: 12px; background: var(--panel); }
+.library-map { aspect-ratio: 3 / 1; overflow: hidden; background: var(--space); }
+.library-map img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.library-copy { display: flex; flex: 1; flex-direction: column; gap: 11px; padding: clamp(14px, 3vw, 22px); }
+.library-copy h3 { font: 600 32px/1.05 var(--display); }
+.library-copy p { color: #c6d5e9; font-size: 14px; line-height: 1.55; }
+.library-copy .library-classification { color: var(--muted); font-size: 12px; }
+.library-values { margin-block: auto 4px; padding-top: 8px; font-size: 13px; }
+.library-values dd { color: #e1edf5; font-family: var(--mono); }
+.library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.library-actions button { width: auto; min-height: 44px; }
+#library-error { margin-top: 16px; color: var(--gold); }
+
+@media (max-width: 850px) {
+  #app[data-view="library"] .laboratory { grid-template-rows: 61px 1fr; }
+}
+@media (max-width: 580px) {
+  .library-list { grid-template-columns: minmax(0, 1fr); }
+  .library-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 22px; }
+  .main-nav .planet-action { padding-inline: 8px; }
+}
+@media (max-width: 490px) {
+  #app:has(.main-nav:not([hidden])) .top-system { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
