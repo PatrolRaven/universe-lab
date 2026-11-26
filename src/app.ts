@@ -49,6 +49,7 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   exitExplorer: () => scene?.exitExplorer(),
   toggleExplorerPanel,
   upgradeEarth: () => scene?.upgradeEarth(),
+  earthCameraKey: key => scene?.earthCameraKey(key) ?? false,
   escapeExplorer: () => {
     if (explorerState === 'overview') return false
     if (explorerState === 'exploring' && explorerPanel) toggleExplorerPanel()

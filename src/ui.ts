@@ -51,6 +51,7 @@ interface Actions {
   exitExplorer: () => void
   toggleExplorerPanel: () => void
   upgradeEarth: () => void
+  earthCameraKey: (key: string) => boolean
   escapeExplorer: () => boolean
 }
 
@@ -137,6 +138,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
               <button class="earth-action" type="button" id="earth-info-toggle" aria-controls="earth-panel" aria-expanded="false" hidden>${icon('info', 16)} Earth information</button>
             </div>
             <h2 id="earth-view-title">Exploring Earth</h2>
+            <p class="earth-key-help" id="earth-key-help" hidden><kbd>↑ ↓ ← →</kbd> Rotate <span aria-hidden="true">·</span> <kbd>+ / = / −</kbd> Zoom</p>
             <p class="earth-status" id="earth-status" role="status" hidden></p>
             <button class="earth-action earth-quality" type="button" id="earth-quality" hidden>Load 4K surface</button>
           </div>
@@ -241,6 +243,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const explore = node<HTMLButtonElement>('explore-earth')
   const exploreLabel = node('explore-earth-label')
   const earthToolbar = node('earth-toolbar')
+  const earthKeyHelp = node('earth-key-help')
   const earthBack = node<HTMLButtonElement>('earth-back')
   const earthToggle = node<HTMLButtonElement>('earth-info-toggle')
   const earthPanel = node('earth-panel')
@@ -301,6 +304,11 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   earthClose.addEventListener('click', actions.toggleExplorerPanel, { signal })
   earthQuality.addEventListener('click', () => {
     if (earthQuality.getAttribute('aria-disabled') !== 'true') actions.upgradeEarth()
+  }, { signal })
+
+  viewport.addEventListener('keydown', event => {
+    if (event.target !== viewport || explorerState !== 'exploring' || event.altKey || event.ctrlKey || event.metaKey) return
+    if (actions.earthCameraKey(event.key)) event.preventDefault()
   }, { signal })
 
   document.addEventListener('keydown', event => {
@@ -367,7 +375,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     explorer(state: ExplorerState, panelOpen: boolean, quality: ExplorerQuality, errorMessage = '') {
       const previous = explorerState
       const wasInsidePanel = earthPanel.contains(document.activeElement)
-      const wasInsideExplorer = wasInsidePanel || earthToolbar.contains(document.activeElement)
+      const wasInsideExplorer = wasInsidePanel || earthToolbar.contains(document.activeElement) || document.activeElement === viewport
       const qualityHadFocus = document.activeElement === earthQuality
       explorerState = state
       explorerError = errorMessage
@@ -376,6 +384,10 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       root.dataset.earthState = state
       root.dataset.earthPanel = panelVisible ? 'open' : 'closed'
       viewport.setAttribute('aria-labelledby', active ? 'earth-view-title' : 'view-title')
+      viewport.tabIndex = state === 'exploring' ? 0 : -1
+      if (state === 'exploring') viewport.setAttribute('aria-describedby', 'earth-key-help')
+      else viewport.removeAttribute('aria-describedby')
+      earthKeyHelp.hidden = state !== 'exploring'
       earthToolbar.hidden = !active
       earthPanel.hidden = !panelVisible
       earthToggle.hidden = state !== 'exploring'
@@ -392,6 +404,9 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       if (previous === 'overview' && active) {
         if (matchMedia('(max-width: 850px)').matches) viewport.scrollIntoView({ block: 'start' })
         earthBack.focus({ preventScroll: true })
+      }
+      if (previous === 'entering' && state === 'exploring' && document.activeElement === earthBack) {
+        viewport.focus({ preventScroll: true })
       }
       if (wasInsidePanel && !panelVisible && state === 'exploring') earthToggle.focus({ preventScroll: true })
       if (previous !== 'exiting' && state === 'exiting') earthBack.focus({ preventScroll: true })

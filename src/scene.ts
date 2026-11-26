@@ -5,7 +5,7 @@ import type { Simulation } from './physics'
 import { haloMaterial, ringMaterial, surfaceMaterial } from './materials'
 import { addSky } from './sky'
 import { OrbitForecasts, TrailHistory } from './trajectories'
-import { EarthCameraArc, EarthGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './earth-explorer'
+import { applyEarthCameraKey, EarthCameraArc, EarthGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './earth-explorer'
 
 export interface Layers {
   orbits: boolean
@@ -377,6 +377,10 @@ export class SpaceScene {
     this.controls.maxDistance = session.maxDistance
     this.controls.minDistance = Math.min(session.minDistance, this.controls.minDistance)
     this.notifyExplorer(session)
+  }
+
+  earthCameraKey(key: string) {
+    return this.earthSession?.state === 'exploring' && applyEarthCameraKey(this.controls, key)
   }
 
   upgradeEarth() {

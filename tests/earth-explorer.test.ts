@@ -1,10 +1,51 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Vector3 } from 'three'
-import { EarthCameraArc, EarthGlobe, loadEarthTexture } from '../src/earth-explorer'
+import { PerspectiveCamera, Vector3 } from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { applyEarthCameraKey, EarthCameraArc, EarthGlobe, loadEarthTexture } from '../src/earth-explorer'
 import { scenarios } from '../src/data'
 import { Simulation } from '../src/physics'
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('Earth camera keyboard controls', () => {
+  function cameraControls() {
+    const camera = new PerspectiveCamera()
+    camera.position.set(0, 0, 1)
+    const controls = new OrbitControls(camera)
+    controls.minDistance = 0.5
+    controls.maxDistance = 2
+    controls.update()
+    return controls
+  }
+
+  it.each([
+    ['ArrowLeft', 'x', -1], ['ArrowRight', 'x', 1],
+    ['ArrowUp', 'y', 1], ['ArrowDown', 'y', -1],
+  ] as const)('rotates with %s around the existing target', (key, axis, sign) => {
+    const controls = cameraControls()
+    expect(applyEarthCameraKey(controls, key)).toBe(true)
+    expect(Math.sign(controls.object.position[axis])).toBe(sign)
+    expect(controls.getDistance()).toBeCloseTo(1)
+    expect(controls.target).toEqual(new Vector3())
+  })
+
+  it('zooms with +, = and - and respects the existing distance limits', () => {
+    const controls = cameraControls()
+    expect(applyEarthCameraKey(controls, 'Tab')).toBe(false)
+    expect(controls.getDistance()).toBeCloseTo(1)
+    applyEarthCameraKey(controls, '+')
+    const firstDistance = controls.getDistance()
+    expect(firstDistance).toBeLessThan(1)
+    applyEarthCameraKey(controls, '=')
+    expect(controls.getDistance()).toBeLessThan(firstDistance)
+    for (let i = 0; i < 20; i++) applyEarthCameraKey(controls, '+')
+    expect(controls.getDistance()).toBeCloseTo(0.5)
+    applyEarthCameraKey(controls, '-')
+    expect(controls.getDistance()).toBeGreaterThan(0.5)
+    for (let i = 0; i < 20; i++) applyEarthCameraKey(controls, '-')
+    expect(controls.getDistance()).toBeCloseTo(2)
+  })
+})
 
 describe('Earth camera arc', () => {
   it('keeps an opposite-side transition outside the planet and restores its exact ends', () => {

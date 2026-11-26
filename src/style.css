@@ -501,6 +501,9 @@ svg { flex-shrink: 0; vertical-align: middle; }
   text-shadow: 0 2px 9px #09121c;
 }
 .earth-status { max-width: 45ch; text-shadow: 0 1px 5px #09121c; }
+.earth-key-help { margin: 8px 0 0; color: #c1d3e7; font-size: 12px; text-shadow: 0 1px 5px #09121c; }
+.earth-key-help kbd { color: #e6f6ff; font-family: inherit; font-weight: 600; }
+#app[data-earth-state="exploring"] .viewport:focus-visible { outline: 2px solid #9ae7e9; outline-offset: -2px; }
 .earth-action {
   min-height: 44px;
   display: inline-flex;

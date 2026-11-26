@@ -1,10 +1,27 @@
 /// <reference types="vite/client" />
 import * as THREE from 'three'
+import type { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { DetailedAppearance } from './data'
 
 export type ExplorerState = 'overview' | 'entering' | 'exploring' | 'exiting'
 export type ExplorerQuality = 'unavailable' | 'available' | 'loading' | 'high'
 export type ExplorerUpdate = (state: ExplorerState, quality: ExplorerQuality, error?: string) => void
+
+export function applyEarthCameraKey(controls: OrbitControls, key: string) {
+  const angle = Math.PI / 24
+  const scale = 0.88
+  switch (key) {
+    case 'ArrowLeft': controls.rotateLeft(angle); break
+    case 'ArrowRight': controls.rotateLeft(-angle); break
+    case 'ArrowUp': controls.rotateUp(angle); break
+    case 'ArrowDown': controls.rotateUp(-angle); break
+    case '+':
+    case '=': controls.dollyIn(scale); break
+    case '-': controls.dollyOut(scale); break
+    default: return false
+  }
+  return true
+}
 
 export async function loadEarthTexture(file: string, signal: AbortSignal, color = false) {
   const response = await fetch(import.meta.env.BASE_URL + file, { signal })
