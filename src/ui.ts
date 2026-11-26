@@ -87,7 +87,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           </section>
         </aside>
 
-        <section id="viewport" class="viewport" aria-labelledby="view-title">
+        <section id="viewport" class="viewport" aria-labelledby="view-title" tabindex="-1">
           <div class="viewport-labels" id="viewport-labels"></div>
           <div class="view-header" data-enter>
             <div class="view-kicker"><span></span> SYSTEM VIEW</div>
@@ -97,18 +97,23 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <button type="button" id="overview" class="overview" title="Return to system view (H)" aria-label="Return to system view">${icon('frame', 19)}</button>
           <div class="frame-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="view-footer">
-            <div class="view-help">${icon('mouse', 14)} <span>Drag to rotate</span><b>·</b><span>Scroll to zoom</span><b>·</b><span>Right-drag to pan</span></div>
+            <div class="view-actions">
+              <div class="view-help view-help-mouse">${icon('mouse', 14)} <span>Drag to rotate</span><b>·</b><span>Scroll to zoom</span><b>·</b><span>Right-drag to pan</span></div>
+              <div class="view-help view-help-touch"><span>Drag to rotate</span><b>·</b><span>Pinch to zoom</span></div>
+              <a class="inspect-link" href="#inspector">${icon('info', 14)}<span id="inspect-label"></span>${icon('arrow', 12)}</a>
+            </div>
             <div class="view-axis" aria-hidden="true"><span></span><span></span><span></span><i>X</i><i>Y</i><i>Z</i></div>
           </div>
           <div class="scene-error" id="scene-error" role="status" hidden></div>
         </section>
 
-        <aside class="inspector" aria-label="Object inspector and display">
+        <aside class="inspector" id="inspector" aria-label="Object inspector and display" tabindex="-1">
           <div class="section-heading"><h2 class="section-label">Object inspector</h2>${icon('focus', 16)}</div>
           <div class="object-heading" id="object-heading">
             <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
             <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
           </div>
+          <p id="profile-overview" class="profile-overview" hidden></p>
           <button type="button" class="focus-button" id="focus">${icon('focus', 17)} Focus camera</button>
           <section class="statistics" aria-labelledby="physical-title">
             <h3 id="physical-title" class="section-label">Physical properties</h3>
@@ -167,6 +172,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const description = node('view-description')
   const objectType = node('object-type')
   const objectName = node('object-name')
+  const profileOverview = node('profile-overview')
+  const inspectLabel = node('inspect-label')
   const emblem = node('object-emblem')
   const mass = node('mass')
   const radius = node('radius')
@@ -237,21 +244,25 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       list.innerHTML = scenario.objects.map(spec => `
         <button type="button" class="object-row" data-body="${spec.id}" aria-pressed="false">
           <span class="object-dot${stars(spec.appearance.kind) ? ' stellar' : ''}" style="--body-color:${spec.appearance.color}"></span>
-          <span>${spec.name}</span><span class="object-chevron">${icon('arrow', 12)}</span>
+          <span>${spec.profile.name}</span><span class="object-chevron">${icon('arrow', 12)}</span>
         </button>`).join('')
     },
     selected(spec: ObjectSpec) {
       for (const button of list.querySelectorAll<HTMLButtonElement>('[data-body]')) {
         button.setAttribute('aria-pressed', String(button.dataset.body === spec.id))
       }
-      objectType.textContent = spec.classification
-      objectName.textContent = spec.name
+      const { profile } = spec
+      objectType.textContent = profile.classification
+      objectName.textContent = profile.name
+      inspectLabel.textContent = 'Inspect ' + profile.name
+      profileOverview.textContent = profile.overview ?? ''
+      profileOverview.hidden = !profile.overview
       emblem.dataset.kind = spec.appearance.kind
       emblem.style.setProperty('--body-color', spec.appearance.color)
       emblem.style.setProperty('--body-dark', spec.appearance.dark)
       emblem.style.setProperty('--body-accent', spec.appearance.accent)
       mass.textContent = scientific(spec.mass)
-      radius.textContent = format.format(spec.radius)
+      radius.textContent = format.format(profile.radiusKm)
     },
     readings(body: Body, years: number) {
       elapsed.textContent = (years * 365.25).toFixed(2)

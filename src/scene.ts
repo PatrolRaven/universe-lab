@@ -14,6 +14,7 @@ export interface Layers {
 }
 
 const TRAIL_LENGTH = 256
+const MIN_CAMERA_DISTANCE = 0.4
 const setBodyPosition = (point: THREE.Vector3, body: { position: number[] }) =>
   point.set(body.position[0], body.position[1], body.position[2])
 
@@ -98,7 +99,7 @@ export class SpaceScene {
     this.controls = new OrbitControls(this.camera, canvas)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.12
-    this.controls.minDistance = 0.4
+    this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.controls.maxDistance = 48
     this.controls.zoomSpeed = 0.8
 
@@ -195,11 +196,12 @@ export class SpaceScene {
     label.type = 'button'
     label.className = 'object-label'
     label.dataset.object = spec.id
-    label.textContent = spec.name
+    label.textContent = spec.profile.name
     this.labels.append(label)
     this.contents.add(group, orbit, trail)
-    const labelBox = { x: 0, y: 0, width: spec.name.length * 6.1 + 14, visible: false }
-    return { spec, group, surface, light, halo, orbit, trail, history, trailHistory, addHistoryRange, label, labelBox }
+    const labelBox = { x: 0, y: 0, width: spec.profile.name.length * 6.1 + 14, visible: false }
+    const disc = { x: 0, y: 0, radius: 0 }
+    return { spec, group, surface, light, halo, orbit, trail, history, trailHistory, addHistoryRange, label, labelBox, disc }
   }
 
   load(scenario: Scenario, simulation: Simulation) {
@@ -270,12 +272,14 @@ export class SpaceScene {
   focus(id: string) {
     this.focused = this.visuals.find(visual => visual.spec.id === id)
     if (!this.focused) return
+    this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.spec.appearance.size * 1.18)
     this.anchor.copy(this.focused.group.position)
     this.view = 'focus'
     this.transition = true
   }
 
   overview(immediate = false) {
+    this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.dirty = true
     this.view = 'overview'
     this.focused = undefined
@@ -397,19 +401,28 @@ export class SpaceScene {
   private positionLabels() {
     const { width, height } = this
     const pixelScale = height / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)))
-    for (const visual of this.labelOrder) visual.labelBox.visible = false
+    for (const { group, disc, labelBox, spec } of this.labelOrder) {
+      labelBox.visible = false
+      this.projected.copy(group.position).applyMatrix4(this.camera.matrixWorldInverse)
+      const depth = -this.projected.z
+      this.projected.applyMatrix4(this.camera.projectionMatrix)
+      disc.radius = depth > this.camera.near && depth < this.camera.far ? pixelScale * spec.appearance.size / depth : 0
+      disc.x = (this.projected.x * 0.5 + 0.5) * width
+      disc.y = (0.5 - this.projected.y * 0.5) * height
+    }
     for (const visual of this.labelOrder) {
-      const box = visual.labelBox
-      this.projected.copy(visual.group.position).project(this.camera)
-      const x = (this.projected.x * 0.5 + 0.5) * width
-      const y = (0.5 - this.projected.y * 0.5) * height
-      if (this.projected.z >= -1 && this.projected.z <= 1 && x > box.width / 2 && x < width - box.width / 2) {
-        const radius = pixelScale * visual.spec.appearance.size / this.camera.position.distanceTo(visual.group.position)
+      const { labelBox: box, disc: { x, y, radius } } = visual
+      if (radius > 0 && x >= 0 && x <= width && y >= 0 && y <= height) {
         const offset = Math.min(radius * (visual.spec.appearance.ring ? 1.35 : 1.05) + 5, height * 0.39)
         box.x = x
         box.y = y + offset
         if (!this.fitsLabel(visual)) box.y = y - offset - 20
-        if (!this.fitsLabel(visual)) box.y = y + offset + 21
+        if (!this.fitsLabel(visual)) {
+          const sideOffset = radius + box.width * 0.5 + 5
+          box.y = y - 10
+          box.x = x - sideOffset
+          if (!this.fitsLabel(visual)) box.x = x + sideOffset
+        }
         box.visible = this.fitsLabel(visual)
       }
       visual.label.hidden = !box.visible
@@ -421,10 +434,16 @@ export class SpaceScene {
 
   private fitsLabel(visual: Visual) {
     const { x, y, width } = visual.labelBox
-    if (y < 12 || y > this.height - 35) return false
+    if (x < width * 0.5 || x > this.width - width * 0.5 || y < 12 || y > this.height - 56) return false
     for (const other of this.labelOrder) {
       const box = other.labelBox
       if (box.visible && Math.abs(y - box.y) < 21 && Math.abs(x - box.x) < (width + box.width) * 0.5) return false
+      const { disc } = other
+      if (disc.radius > 0) {
+        const dx = Math.max(0, Math.abs(x - disc.x) - width * 0.5)
+        const dy = Math.max(0, Math.abs(y + 10 - disc.y) - 10)
+        if (dx * dx + dy * dy < (disc.radius + 2) ** 2) return false
+      }
     }
     return true
   }

@@ -2,9 +2,7 @@
 
 export interface BodyInput {
   id: string
-  name: string
   mass: number
-  radius: number
   position: Vector
   velocity: Vector
 }
@@ -65,10 +63,10 @@ export class Simulation {
     readonly softening = SOFTENING,
   ) {
     if (!Number.isFinite(stepSize) || stepSize <= 0) throw new RangeError('The simulation step must be finite and positive.')
-    this.bodies = initial.map(body => ({
-      ...body,
-      position: [...body.position],
-      velocity: [...body.velocity],
+    this.bodies = initial.map(({ id, mass, position, velocity }) => ({
+      id, mass,
+      position: [...position],
+      velocity: [...velocity],
       acceleration: [0, 0, 0],
     }))
     const mass = this.bodies.reduce((total, body) => total + body.mass, 0)

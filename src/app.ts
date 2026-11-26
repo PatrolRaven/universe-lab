@@ -32,7 +32,10 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   },
   focus: () => {
     if (!scene) return
-    if (matchMedia('(max-width: 850px)').matches) ui.viewport.scrollIntoView({ block: 'start' })
+    if (matchMedia('(max-width: 850px)').matches) {
+      ui.viewport.focus({ preventScroll: true })
+      ui.viewport.scrollIntoView({ block: 'start' })
+    }
     scene.focus(simulation.bodies[selected].id)
   },
   overview: () => scene?.overview(),

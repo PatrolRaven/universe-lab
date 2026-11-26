@@ -3,7 +3,7 @@ import { G, Simulation, STEP, SOFTENING, type BodyInput, type Vector } from '../
 import { scenarios } from '../src/data'
 
 function body(id: string, mass: number, position: Vector, velocity: Vector = [0, 0, 0]): BodyInput {
-  return { id, name: id, mass, radius: 1, position, velocity }
+  return { id, mass, position, velocity }
 }
 
 function pair() {
@@ -228,6 +228,21 @@ describe('fixed-step Velocity Verlet', () => {
 })
 
 describe('preset systems', () => {
+  it('keeps catalogue and appearance metadata out of live and forecast state', () => {
+    const scenario = scenarios[0]
+    const simulation = new Simulation(scenario.objects)
+    const index = scenario.objects.findIndex(spec => spec.id === 'venus')
+    const spec = scenario.objects[index]
+    expect(spec.profile).toMatchObject({ name: 'Venus', category: 'planet', classification: 'Terrestrial planet' })
+    expect(spec.appearance.kind).toBe('gas')
+    expect(simulation.bodies[index]).toEqual({
+      id: spec.id, mass: spec.mass, position: spec.position, velocity: spec.velocity,
+      acceleration: simulation.bodies[index].acceleration,
+    })
+    expect(simulation.bodies[index].position).not.toBe(spec.position)
+    expect(simulation.fork().bodies[index]).toEqual(simulation.bodies[index])
+  })
+
   it.each(scenarios)('$name preserves invariants and stays bounded over 250 simulated years', scenario => {
     const sim = new Simulation(scenario.objects)
     const initialEnergy = energy(sim)
