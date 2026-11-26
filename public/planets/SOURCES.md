@@ -1,18 +1,18 @@
-# Solar System planet maps
+# Карты планет Солнечной системы
 
-## Attribution and data
+## Источники и атрибуция
 
-Seven maps are adapted from [Solar System Scope / INOVE, Solar Textures](https://play.solarsystemscope.com/textures/) under [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/). The publisher credits NASA elevation and imagery data and states that the maps include tuned colors and representative fills for gaps in coverage. The cloud and atmospheric bands of Venus, Jupiter, Saturn, Uranus and Neptune represent appearance above the atmosphere. In the case of Venus, the selected map depicts cloud tops. Use these maps for illustrative rendering.
+Семь карт адаптированы из набора [Solar System Scope / INOVE, Solar Textures](https://play.solarsystemscope.com/textures/) по лицензии [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/). Издатель указывает, что использовал высотные и визуальные данные NASA, а цвета карт скорректированы и пробелы покрытия заполнены примерными данными. Полосы облаков и атмосферы Венеры, Юпитера, Сатурна, Урана и Нептуна показывают внешний вид планет выше твёрдой поверхности. Карта Венеры отображает верхние слои облаков. Эти карты предназначены для иллюстративной визуализации.
 
-The Earth map derives from the existing July 2004 [NASA Earth Observatory Blue Marble](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/) asset. Credit NASA Earth Observatory, Reto Stöckli and NASA Goddard Space Flight Center. [Earth asset provenance and use terms](../earth/SOURCES.md#daytime-surface).
+Карта Земли подготовлена на основе имеющегося изображения [NASA Earth Observatory Blue Marble за июль 2004 года](https://science.nasa.gov/earth/earth-observatory/blue-marble-next-generation/base-map/). Атрибуция: NASA Earth Observatory, Reto Stöckli и NASA Goddard Space Flight Center. [Происхождение и условия использования ресурсов Земли](../earth/SOURCES.md#daytime-surface).
 
-## Files and processing
+## Файлы и обработка
 
-The direct Solar System Scope asset host timed out during preparation. Six maps use the fixed [Orrery source archive and attribution record](https://github.com/RTF22/Orrery/blob/6c81feb760cb36d7d83d1421aef257833ba9768e/ASSETS.md). Its record lists the upstream filenames and describes the JPEGs as renamed copies. Venus uses the [documented Simple Space Data Mirror](https://www.simplespacedata.org/), which identifies this cloud-top image as the Solar System Scope Venus atmosphere map. Hashes below identify the actual input bytes. They were not compared against an independent download from Solar System Scope.
+Во время подготовки прямая загрузка с сервера Solar System Scope завершилась по тайм-ауту. Для шести карт использован закреплённый [архив исходников Orrery и запись об атрибуции](https://github.com/RTF22/Orrery/blob/6c81feb760cb36d7d83d1421aef257833ba9768e/ASSETS.md). В нём указаны исходные имена и отмечено, что JPEG-файлы были переименованы. Карта облаков Венеры взята из [документированного зеркала Simple Space Data](https://www.simplespacedata.org/), которое идентифицирует её как атмосферную карту Венеры Solar System Scope. Приведённые ниже хеши относятся к фактически использованным байтам источников; независимая загрузка с Solar System Scope для побайтового сравнения не выполнялась.
 
-The distributed RGB maps are 1024 × 512 equirectangular WebP. Inputs measure 2048 × 1024. Lanczos resampling and WebP encoding are the only changes. The encoder used libwebp method 6, quality 86 for Mercury, Earth, Mars and Jupiter and 84 for the rest.
+В приложение включены RGB-карты WebP размером 1024 × 512 в эквидистантной цилиндрической проекции. Исходные изображения имеют размер 2048 × 1024. Применены только ресэмплинг Lanczos и кодирование WebP: libwebp, метод 6, качество 86 для Меркурия, Земли, Марса и Юпитера и 84 для остальных тел.
 
-| Runtime asset | Publisher asset and actual input | WebP bytes | Input SHA-256 | WebP SHA-256 |
+| Файл в приложении | Файл издателя и фактически использованный источник | Размер WebP, байт | SHA-256 источника | SHA-256 WebP |
 | --- | --- | ---: | --- | --- |
 | mercury.webp | [Solar System Scope JPEG](https://www.solarsystemscope.com/textures/download/2k_mercury.jpg) · [pinned copy](https://github.com/RTF22/Orrery/blob/6c81feb760cb36d7d83d1421aef257833ba9768e/assets-quellen/texturen/mercury/albedo.jpg) | 114,016 | `5a5c80607f643496bac9a631e71957def35ed788895f18b678ac849c2b38e48a` | `aec634ffde19baa55f8b09709c25ee5952477e2f4b26898b42ce0099aa255c1f` |
 | venus.webp | [Solar System Scope JPEG](https://www.solarsystemscope.com/textures/download/2k_venus_atmosphere.jpg) · [Simple Space Data Mirror](https://www.simplespacedata.org/texture/solarsystemscope/venus_atmosphere/latest/2k_venus_atmosphere.jpg) | 14,148 | `225012ad4911730605c4e189ca2a3bf674fce50cc48aab4102b936b47d6991ac` | `67d4b0b0c1c10f45d5e859fdc04df1bcd4f326d82b1fdb8756372f9cfd3ab7ee` |

@@ -4,12 +4,13 @@ import { scenarios, type Scenario } from './data'
 import { Simulation } from './physics'
 import { SpaceScene } from './scene'
 import { createUI } from './ui'
-import type { ExplorerQuality, ExplorerState } from './earth-explorer'
+import type { ExplorerQuality, ExplorerState } from './planet-explorer'
 
 let scenario = scenarios[0]
 let simulation = new Simulation(scenario.objects)
 let selected = 0
-const clock = new SimulationClock(performance.now(), !matchMedia('(prefers-reduced-motion: reduce)').matches, !document.hidden)
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
+const clock = new SimulationClock(performance.now(), reducedMotion.matches, !document.hidden)
 const lifecycle = new AbortController()
 let scene: SpaceScene | undefined
 let explorerState: ExplorerState = 'overview'
@@ -24,17 +25,6 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
     if (next && next !== scenario) load(next)
   },
   select,
-  play: () => {
-    advanceClock(performance.now())
-    clock.running = !clock.running
-    ui.playing(clock.running)
-    updateReadings()
-  },
-  reset: () => load(scenario),
-  rate: value => {
-    advanceClock(performance.now())
-    clock.rate = value
-  },
   focus: () => {
     if (!scene) return
     if (matchMedia('(max-width: 850px)').matches) {
@@ -45,11 +35,11 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   },
   overview: () => scene?.overview(),
   layers: layers => scene?.setLayers(layers),
-  explore: () => scene?.exploreEarth(),
+  explore: id => scene?.explorePlanet(id),
   exitExplorer: () => scene?.exitExplorer(),
   toggleExplorerPanel,
-  upgradeEarth: () => scene?.upgradeEarth(),
-  earthCameraKey: key => scene?.earthCameraKey(key) ?? false,
+  upgradePlanetSurface: () => scene?.upgradePlanetSurface(),
+  planetCameraKey: key => scene?.planetCameraKey(key) ?? false,
   escapeExplorer: () => {
     if (explorerState === 'overview') return false
     if (explorerState === 'exploring' && explorerPanel) toggleExplorerPanel()
@@ -76,13 +66,13 @@ function updateExplorer(state: ExplorerState, quality: ExplorerQuality, error?: 
 }
 
 function updateReadings() {
-  ui.readings(simulation.bodies[selected], simulation.elapsed)
+  ui.readings(simulation.bodies[selected])
 }
 
 function select(id: string) {
   const index = scenario.objects.findIndex(body => body.id === id)
   if (index < 0) return
-  if (id !== 'earth' && explorerState !== 'overview') scene?.exitExplorer()
+  if (id !== 'earth' && id !== 'mars' && explorerState !== 'overview') scene?.exitExplorer()
   selected = index
   ui.selected(scenario.objects[index])
   scene?.select(id)
@@ -103,14 +93,13 @@ try {
   scene = new SpaceScene(ui.viewport, ui.labels, select, () => {
     scene?.dispose()
     scene = undefined
-    ui.sceneError('The graphics context was lost. Reload the page to restore the 3D view.')
+    ui.sceneError('Графический контекст потерян. Перезагрузите страницу, чтобы восстановить 3D-сцену.')
   }, updateExplorer)
 } catch (error) {
   if (!(error instanceof Error) || error.message !== 'WebGL 2 is unavailable') throw error
-  ui.sceneError('Enable hardware acceleration or open this lab in a browser with WebGL 2 support.')
+  ui.sceneError('Включите аппаратное ускорение или откройте лабораторию в браузере с поддержкой WebGL 2.')
 }
 load(scenario, true)
-ui.playing(clock.running)
 
 function sampleTrails() {
   scene?.sampleTrails(simulation)
@@ -128,7 +117,7 @@ function animate(now: number) {
   previousFrame = now
   advanceClock(now)
   scene?.render(simulation, cameraDelta)
-  if (clock.running && now - lastReadings > 75) {
+  if (now - lastReadings > 75) {
     updateReadings()
     lastReadings = now
   }
@@ -144,6 +133,9 @@ function dispose() {
 }
 
 const { signal } = lifecycle
+reducedMotion.addEventListener('change', event => {
+  clock.setReducedMotion(event.matches, performance.now())
+}, { signal })
 document.addEventListener('visibilitychange', () => {
   clock.setVisible(!document.hidden, performance.now())
 }, { signal })

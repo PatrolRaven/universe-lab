@@ -7,7 +7,7 @@ export type ExplorerState = 'overview' | 'entering' | 'exploring' | 'exiting'
 export type ExplorerQuality = 'unavailable' | 'available' | 'loading' | 'high'
 export type ExplorerUpdate = (state: ExplorerState, quality: ExplorerQuality, error?: string) => void
 
-export function applyEarthCameraKey(controls: OrbitControls, key: string) {
+export function applyPlanetCameraKey(controls: OrbitControls, key: string) {
   const angle = Math.PI / 24
   const scale = 0.88
   switch (key) {
@@ -23,9 +23,9 @@ export function applyEarthCameraKey(controls: OrbitControls, key: string) {
   return true
 }
 
-export async function loadEarthTexture(file: string, signal: AbortSignal, color = false) {
+export async function loadPlanetTexture(file: string, signal: AbortSignal, color = false) {
   const response = await fetch(import.meta.env.BASE_URL + file, { signal })
-  if (!response.ok) throw new Error('Earth texture unavailable: ' + response.status)
+  if (!response.ok) throw new Error('Текстура планеты недоступна: ' + response.status)
   const blob = await response.blob()
   signal.throwIfAborted()
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY', colorSpaceConversion: 'none' })
@@ -49,17 +49,17 @@ function release(texture: THREE.Texture | null) {
 }
 
 const vertex = /* glsl */ `
-  varying vec2 uvEarth;
+  varying vec2 uvPlanet;
   varying vec3 worldNormal, worldPoint;
   void main() {
-    uvEarth = uv;
+    uvPlanet = uv;
     worldNormal = normalize(mat3(modelMatrix) * normal);
     worldPoint = (modelMatrix * vec4(position, 1.)).xyz;
     gl_Position = projectionMatrix * viewMatrix * vec4(worldPoint, 1.);
   }
 `
 
-export class EarthGlobe {
+export class PlanetGlobe {
   readonly mesh = new THREE.Group()
   readonly direction = new THREE.Vector3(1, 0, 0)
   private readonly requests = new AbortController()
@@ -76,7 +76,7 @@ export class EarthGlobe {
     uniforms: this.maps,
     vertexShader: vertex,
     fragmentShader: /* glsl */ `
-      varying vec2 uvEarth;
+      varying vec2 uvPlanet;
       varying vec3 worldNormal, worldPoint;
       uniform sampler2D albedo, terrain, night;
       uniform vec3 sun;
@@ -85,12 +85,12 @@ export class EarthGlobe {
         vec3 N = normalize(worldNormal);
         vec3 V = normalize(cameraPosition - worldPoint);
         float solar = dot(N, sun);
-        vec3 rgb = texture2D(albedo, uvEarth).rgb;
+        vec3 rgb = texture2D(albedo, uvPlanet).rgb;
         vec3 relief = N;
         vec3 east = vec3(N.z, 0., -N.x);
         if (hasTerrain && dot(east,east) > .00001) {
           east = normalize(east);
-          vec3 texel = texture2D(terrain, uvEarth).xyz * 2. - 1.;
+          vec3 texel = texture2D(terrain, uvPlanet).xyz * 2. - 1.;
           relief = normalize(N + .32 * (east * texel.x + cross(N, east) * texel.y));
         }
         float day = smoothstep(-.14, .16, solar);
@@ -100,7 +100,7 @@ export class EarthGlobe {
         float shine = pow(max(dot(N, normalize(sun + V + vec3(.00001))), 0.), 48.);
         col += vec3(.52,.72,1.) * shine * water * day * .20;
         if (hasNight) {
-          float cities = texture2D(night, uvEarth).r;
+          float cities = texture2D(night, uvPlanet).r;
           col += vec3(1.,.69,.30) * pow(cities, 1.65) * (1. - day) * .78;
         }
         float rim = pow(1. - max(dot(N,V),0.), 3.5);
@@ -111,7 +111,7 @@ export class EarthGlobe {
     `,
   })
   private readonly atmosphere = new THREE.ShaderMaterial({
-    uniforms: { sun: this.maps.sun },
+    uniforms: { sun: this.maps.sun, airColor: { value: new THREE.Color('#3278d6') } },
     vertexShader: vertex,
     side: THREE.BackSide,
     transparent: true,
@@ -120,13 +120,14 @@ export class EarthGlobe {
     fragmentShader: /* glsl */ `
       varying vec3 worldNormal, worldPoint;
       uniform vec3 sun;
+      uniform vec3 airColor;
       void main() {
         vec3 N = normalize(worldNormal);
         vec3 V = normalize(cameraPosition - worldPoint);
         float edge = abs(dot(N, V));
         float air = sin(clamp(edge * 4.5, 0., 1.) * 1.570796) * exp(-12. * edge);
         float day = smoothstep(-.42,.34,dot(N,sun));
-        gl_FragColor = vec4(.19,.53,1., air * (.066 + .69 * day));
+        gl_FragColor = vec4(airColor, air * (.066 + .69 * day));
       }
     `,
   })
@@ -136,6 +137,7 @@ export class EarthGlobe {
     const air = new THREE.Mesh(this.geometry, this.atmosphere)
     air.scale.setScalar(1.042)
     this.mesh.add(ground, air)
+    if (detail.atmosphere?.color) this.atmosphere.uniforms.airColor.value.set(detail.atmosphere.color)
     // Align the prime meridian with the default sunward view of the solar preset.
     this.mesh.rotation.y = Math.PI
     this.mesh.scale.setScalar(radius)
@@ -168,7 +170,7 @@ export class EarthGlobe {
 
   async upgrade() {
     const file = this.detail.surfaceMap?.highResolutionUrl
-    if (!file) throw new Error('High-resolution Earth map is unavailable')
+    if (!file) throw new Error('Карта высокого разрешения недоступна')
     await this.install('albedo', file)
   }
 
@@ -189,7 +191,7 @@ export class EarthGlobe {
 
   private async install(slot: 'albedo' | 'terrain' | 'night', file: string) {
     const signal = this.requests.signal
-    const texture = await loadEarthTexture(file, signal, slot === 'albedo')
+    const texture = await loadPlanetTexture(file, signal, slot === 'albedo')
     if (signal.aborted) {
       release(texture)
       signal.throwIfAborted()
@@ -200,7 +202,7 @@ export class EarthGlobe {
 }
 
 // Interpolate direction and radius separately so a long arc cannot cut through the globe.
-export class EarthCameraArc {
+export class PlanetCameraArc {
   private readonly start = new THREE.Vector3()
   private readonly end = new THREE.Vector3()
   private readonly turn = new THREE.Quaternion()

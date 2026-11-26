@@ -1,8 +1,8 @@
 ﻿import type { ObjectSpec, Scenario } from './data'
 import type { Body } from './physics'
 import type { Layers } from './scene'
-import type { ExplorerQuality, ExplorerState } from './earth-explorer'
-import { earthProfile } from './earth-profile'
+import type { ExplorerQuality, ExplorerState } from './planet-explorer'
+import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -17,9 +17,6 @@ const icons = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>',
   label: '<path d="M4 5h16M12 5v14M8.5 19h7M4 5v3m16-3v3"/>',
   effects: '<path d="m12 2 2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/>',
-  play: '<path d="m9 5 11 7-11 7z" fill="currentColor" stroke="none"/>',
-  pause: '<path d="M9 5v14m6-14v14" stroke-width="2.8"/>',
-  reset: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   mouse: '<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 6v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>',
   back: '<path d="m11 5-7 7 7 7M4 12h16"/>',
@@ -31,70 +28,59 @@ const icon = (name: Icon, size = 18) =>
   '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icons[name] + '</svg>'
 
 const displays: { key: keyof Layers, title: string, icon: Icon }[] = [
-  { key: 'orbits', title: 'Orbital paths', icon: 'orbit' },
-  { key: 'trails', title: 'Motion trails', icon: 'trail' },
-  { key: 'labels', title: 'Object labels', icon: 'label' },
-  { key: 'effects', title: 'Glow & nebula', icon: 'effects' },
+  { key: 'orbits', title: 'Орбиты', icon: 'orbit' },
+  { key: 'trails', title: 'Следы движения', icon: 'trail' },
+  { key: 'labels', title: 'Подписи тел', icon: 'label' },
+  { key: 'effects', title: 'Свечение и туманности', icon: 'effects' },
 ]
-
-export const rates = [0.25, 0.5, 1, 2, 4, 8]
 
 interface Actions {
   scenario: (id: string) => void
   select: (id: string) => void
-  play: () => void
-  reset: () => void
-  rate: (rate: number) => void
   focus: () => void
   overview: () => void
   layers: (layers: Layers) => void
-  explore: () => void
+  explore: (id: string) => void
   exitExplorer: () => void
   toggleExplorerPanel: () => void
-  upgradeEarth: () => void
-  earthCameraKey: (key: string) => boolean
+  upgradePlanetSurface: () => void
+  planetCameraKey: (key: string) => boolean
   escapeExplorer: () => boolean
 }
 
-function earthReference() {
+function planetReference(profile: ExplorerProfile, name: string) {
   const links = (items: readonly (readonly [string, string])[]) =>
-    items.map(([label, url]) => '<li><a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a></li>').join('')
+    items.map(([label, url]) => '<li><a href="' + (/^https?:/.test(url) ? url : import.meta.env.BASE_URL + url) + '" target="_blank" rel="noopener noreferrer">' + label + '</a></li>').join('')
   return `
-    <aside class="earth-panel" id="earth-panel" aria-labelledby="earth-panel-title" hidden>
-      <div class="earth-panel-heading">
-        <h2 id="earth-panel-title">About Earth</h2>
-        <button class="earth-action earth-close" type="button" id="earth-close" aria-label="Close information">${icon('close', 18)}</button>
+      <div class="planet-panel-heading">
+        <h2 id="planet-panel-title">О планете ${name}</h2>
+        <button class="planet-action planet-close" type="button" id="planet-close" aria-label="Закрыть справку">${icon('close', 18)}</button>
       </div>
-      <details open><summary>Overview</summary><p>${earthProfile.overview}</p></details>
-      <details><summary>Physical Properties</summary>
-        <dl class="earth-values">${earthProfile.properties.map(([label, value]) =>
+      <details open><summary>Обзор</summary><p>${profile.overview}</p></details>
+      <details><summary>Физические характеристики</summary>
+        <dl class="planet-values">${profile.properties.map(([label, value]) =>
           '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('')}</dl>
-        <p class="earth-model-label">Simulation readings</p>
-        <dl class="earth-values" id="earth-readings">
-          <div><dt>Speed</dt><dd><span id="earth-speed"></span> km/s</dd></div>
-          <div><dt>Position X, Y, Z</dt><dd><span id="earth-position"></span> AU</dd></div>
-        </dl>
-        <p>These readings use the laboratory’s simplified orbital model.</p>
       </details>
-      <details><summary>Surface &amp; Structure</summary><p>${earthProfile.surface}</p></details>
-      <details><summary>Atmosphere</summary><p>${earthProfile.atmosphere}</p></details>
-      <details><summary>History</summary><dl class="earth-history">${earthProfile.history.map(([date, description]) =>
+      <details><summary>Поверхность и строение</summary><p>${profile.surface}</p></details>
+      <details><summary>Атмосфера</summary><p>${profile.atmosphere}</p></details>
+      <details><summary>История исследований</summary><dl class="planet-history">${profile.history.map(([date, description]) =>
         '<div><dt>' + date + '</dt><dd>' + description + '</dd></div>').join('')}</dl></details>
-      <details><summary>Sources &amp; imagery</summary><ul>${links(earthProfile.references)}${links(earthProfile.imagery)}</ul></details>
-    </aside>`
+      <details><summary>Источники и изображения</summary><ul>${links(profile.references)}${links(profile.imagery)}</ul></details>
+    `
 }
 
 const stars = (kind: ObjectSpec['appearance']['kind']) => kind === 'star'
-const format = new Intl.NumberFormat('en', { maximumFractionDigits: 0 })
-const precise = new Intl.NumberFormat('en', { maximumFractionDigits: 3, minimumFractionDigits: 3 })
-const scientific = (value: number) => value >= 0.01 ? value.toFixed(3) : value.toExponential(3).replace('e-', 'e−')
+const format = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
+const precise = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3, minimumFractionDigits: 3 })
+const scientificFormat = new Intl.NumberFormat('ru-RU', { notation: 'scientific', maximumFractionDigits: 3, minimumFractionDigits: 3 })
+const scientific = (value: number) => scientificFormat.format(value).replace('E', ' × 10')
 const magnitude = (v: number[]) => Math.hypot(v[0], v[1], v[2])
 const coordinate = (value: number) => precise.format(Math.abs(value) < 0.0005 ? 0 : value)
 
 export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Actions) {
   const scenarioIcons: Icon[] = ['sun', 'binary', 'sandbox']
   root.innerHTML = `
-    <a class="skip-link" href="#simulation">Skip to simulation controls</a>
+    <a class="skip-link" href="#body-selector">Перейти к выбору небесных тел</a>
     <div class="laboratory">
       <header class="topbar">
         <div class="brand">
@@ -102,21 +88,17 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <div><h1>Universe<span> Lab</span></h1></div>
         </div>
         <div class="top-system">
-          <span class="mode-label">${icon('orbit', 16)}<span class="mode-simulation">Simulation</span><span class="mode-explorer">Earth Explorer</span></span>
+          <span class="mode-label">${icon('orbit', 16)}<span class="mode-simulation">Симуляция</span><span class="mode-explorer">Исследователь планет</span></span>
           <span class="top-slash" aria-hidden="true">${icon('arrow', 12)}</span>
           <span id="top-system"></span>
         </div>
-        <div class="top-status">
-          <span class="run-status"><i></i><span id="run-label">Simulation live</span></span>
-          <span class="header-divider"></span>
-          <span class="model-status">${icon('orbit', 15)} Newtonian N-body</span>
-        </div>
+
       </header>
 
-      <main class="workspace" aria-label="Orbital simulation">
-        <aside class="catalog" aria-label="Scenarios and objects">
+      <main class="workspace" aria-label="Орбитальная симуляция">
+        <aside class="catalog" aria-label="Сценарии и слои">
           <section class="scenario-section">
-            <h2 class="section-label">Scenarios</h2>
+            <h2 class="section-label">Сценарии</h2>
             <div class="scenario-list">${scenarios.map((scenario, i) => `
               <button type="button" class="scenario" data-scenario="${scenario.id}" aria-pressed="false">
                 <span class="scenario-icon">${icon(scenarioIcons[i], 19)}</span>
@@ -124,21 +106,17 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
                 <span class="scenario-arrow">${icon('arrow', 13)}</span>
               </button>`).join('')}</div>
           </section>
-          <section class="object-section">
-            <div class="section-heading"><h2 class="section-label">Celestial bodies</h2><span id="object-count" class="count"></span></div>
-            <div class="object-list" id="object-list"></div>
-          </section>
           <section class="display" id="display-layers" tabindex="-1" aria-labelledby="display-title">
-            <h2 id="display-title" class="section-label">Display layers</h2>
+            <h2 id="display-title" class="section-label">Визуальные слои</h2>
             ${displays.map(item => `
               <label class="display-row">
                 <span class="layer-icon">${icon(item.icon, 16)}</span><span>${item.title}</span>
                 <input type="checkbox" role="switch" data-layer="${item.key}" checked><span class="toggle"></span>
               </label>`).join('')}
           </section>
-          <div class="scene-credits" aria-label="Imagery sources">
-            <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">Sky: ESO/S. Brunier</a>
-            <a href="${import.meta.env.BASE_URL}planets/SOURCES.md" target="_blank" rel="noopener noreferrer">Planet imagery credits</a>
+          <div class="scene-credits" aria-label="Источники изображений">
+            <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">Космос: ESO / S. Brunier</a>
+            <a href="${import.meta.env.BASE_URL}planets/SOURCES.md" target="_blank" rel="noopener noreferrer">Источники карт планет</a>
           </div>
         </aside>
 
@@ -148,25 +126,24 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             <h2 id="view-title"></h2>
             <p id="view-description"></p>
           </div>
-          <div class="earth-toolbar" id="earth-toolbar" hidden>
-            <div class="earth-toolbar-actions">
-              <button class="earth-action" type="button" id="earth-back">${icon('back', 16)} Back to Solar System</button>
-              <button class="earth-action" type="button" id="earth-info-toggle" aria-controls="earth-panel" aria-expanded="false" hidden>${icon('info', 16)} Earth information</button>
+          <div class="planet-toolbar" id="planet-toolbar" hidden>
+            <div class="planet-toolbar-actions">
+              <button class="planet-action" type="button" id="planet-back">${icon('back', 16)} К системе</button>
+              <button class="planet-action" type="button" id="planet-info-toggle" aria-controls="planet-panel" aria-expanded="false" hidden>${icon('info', 16)} Справка о планете</button>
             </div>
-            <h2 id="earth-view-title">Exploring Earth</h2>
-            <p class="earth-key-help" id="earth-key-help" hidden><kbd>↑ ↓ ← →</kbd> Rotate <span aria-hidden="true">·</span> <kbd>+ / = / −</kbd> Zoom</p>
-            <p class="earth-status" id="earth-status" role="status" hidden></p>
-            <button class="earth-action earth-quality" type="button" id="earth-quality" hidden>Load 4K surface</button>
+            <h2 id="planet-view-title">Исследование планеты</h2>
+            <p class="planet-key-help" id="planet-key-help" hidden><kbd>↑ ↓ ← →</kbd> Вращение <span aria-hidden="true">·</span> <kbd>+ / = / −</kbd> Масштаб</p>
+            <p class="planet-status" id="planet-status" role="status" hidden></p>
+            <button class="planet-action planet-quality" type="button" id="planet-quality" hidden>Загрузить поверхность 4K</button>
           </div>
           <div class="camera-tools">
-            <button type="button" id="overview" class="overview" title="Return to system view (H)" aria-label="Return to system view">${icon('frame', 19)}</button>
-            <a href="#display-layers" class="view-layers" title="Display layers" aria-label="Go to display layers">${icon('layers', 18)}</a>
+            <button type="button" id="overview" class="overview" title="Вернуться к общему виду (H)" aria-label="Вернуться к общему виду">${icon('frame', 19)}</button>
           </div>
           <div class="frame-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="view-footer">
             <div class="view-actions">
-              <div class="view-help view-help-mouse">${icon('mouse', 14)} <span>Drag to rotate</span><b>·</b><span>Scroll to zoom</span><b>·</b><span>Right-drag to pan</span></div>
-              <div class="view-help view-help-touch"><span>Drag to rotate</span><b>·</b><span>Pinch to zoom</span></div>
+              <div class="view-help view-help-mouse">${icon('mouse', 14)} <span>Вращение</span><b>·</b><span>Колесо — масштаб</span><b>·</b><span>Правая кнопка — панорама</span></div>
+              <div class="view-help view-help-touch"><span>Вращение</span><b>·</b><span>Сведение пальцев — масштаб</span></div>
               <a class="inspect-link" href="#inspector">${icon('info', 14)}<span id="inspect-label"></span>${icon('arrow', 12)}</a>
             </div>
             <div class="view-axis" aria-hidden="true"><span></span><span></span><span></span><i>X</i><i>Y</i><i>Z</i></div>
@@ -174,28 +151,28 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <div class="scene-error" id="scene-error" role="status" hidden></div>
         </section>
 
-        <aside class="inspector" id="inspector" aria-label="Selected object" tabindex="-1">
+        <aside class="inspector" id="inspector" aria-label="Выбранное тело" tabindex="-1">
           <div class="object-card">
             <div class="object-heading" id="object-heading">
               <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
               <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
             </div>
             <div class="object-actions">
-              <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Focus camera</button>
-              <button type="button" class="focus-button explore-earth" id="explore-earth" hidden>${icon('orbit', 17)} <span id="explore-earth-label">Explore Earth</span></button>
+              <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Навести камеру</button>
+              <button type="button" class="focus-button explore-planet" id="explore-planet" hidden>${icon('orbit', 17)} <span id="explore-planet-label">Исследовать</span></button>
             </div>
-            <p class="earth-entry-error" id="earth-entry-error" role="status" hidden></p>
+            <p class="planet-entry-error" id="planet-entry-error" role="status" hidden></p>
           </div>
           <details class="statistics">
-            <summary class="section-label">Physical properties</summary>
+            <summary class="section-label">Физические характеристики</summary>
             <p id="profile-overview" class="profile-overview" hidden></p>
             <dl class="properties">
-              <div><dt>Mass</dt><dd><span id="mass"></span> <small>M☉</small></dd></div>
-              <div><dt>Radius</dt><dd><span id="radius"></span> <small>km</small></dd></div>
-              <div><dt>Speed</dt><dd><span id="speed"></span> <small>km/s</small></dd></div>
-              <div><dt>Acceleration</dt><dd><span id="acceleration"></span> <small>AU/yr²</small></dd></div>
+              <div><dt>Масса</dt><dd><span id="mass"></span> <small>M☉</small></dd></div>
+              <div><dt>Радиус</dt><dd><span id="radius"></span> <small>км</small></dd></div>
+              <div><dt>Скорость</dt><dd><span id="speed"></span> <small>км/с</small></dd></div>
+              <div><dt>Ускорение</dt><dd><span id="acceleration"></span> <small>а.е./год²</small></dd></div>
             </dl>
-            <h3 class="section-label coordinates-label">Position <small>AU</small></h3>
+            <h3 class="section-label coordinates-label">Положение <small>а.е.</small></h3>
             <dl class="coordinates">
               <div><dt>X</dt><dd id="coordinate-x"></dd></div>
               <div><dt>Y</dt><dd id="coordinate-y"></dd></div>
@@ -203,23 +180,10 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             </dl>
           </details>
         </aside>
-        ${earthReference()}
+        <aside class="planet-panel" id="planet-panel" aria-labelledby="planet-panel-title" hidden></aside>
       </main>
 
-      <footer class="timebar" id="simulation" tabindex="-1" aria-label="Simulation controls">
-        <div class="transport">
-          <button type="button" id="play" class="play-button" aria-label="Pause simulation" title="Play or pause (Space)">${icon('pause', 23)}</button>
-          <button type="button" id="reset" class="reset-button" aria-label="Reset simulation" title="Reset simulation (R)">${icon('reset', 19)}</button>
-          <div class="time-readout"><span class="section-label">Simulation time</span><strong><span id="elapsed">0.00</span><small> days</small></strong></div>
-        </div>
-        <div class="rate-control">
-          <div class="rate-meta"><label class="section-label" for="rate">Time scale</label><output for="rate" id="rate-value">1×</output></div>
-          <input id="rate" type="range" min="0" max="5" step="1" value="2" aria-valuetext="1×">
-          <div class="rate-ticks" role="group" aria-label="Time scale presets">${rates.map((value, index) =>
-            `<button type="button" data-rate="${index}" aria-pressed="${index === 2}">${value}×</button>`).join('')}</div>
-        </div>
-        <div class="keyboard"><kbd>Space</kbd> <span>Play / pause</span></div>
-      </footer>
+      <footer class="body-selector" id="body-selector" aria-label="Небесные тела"></footer>
     </div>`
 
   function node<T extends HTMLElement = HTMLElement>(id: string) {
@@ -231,8 +195,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const viewport = node('viewport')
   const labels = node('viewport-labels')
   const error = node('scene-error')
-  const list = node('object-list')
-  const objectCount = node('object-count')
+  const bodySelector = node('body-selector')
   const topSystem = node('top-system')
   const viewTitle = node('view-title')
   const description = node('view-description')
@@ -248,30 +211,21 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const x = node('coordinate-x')
   const y = node('coordinate-y')
   const z = node('coordinate-z')
-  const elapsed = node('elapsed')
-  const rate = node<HTMLInputElement>('rate')
-  const rateValue = node('rate-value')
-  const play = node<HTMLButtonElement>('play')
-  const reset = node<HTMLButtonElement>('reset')
   const focus = node<HTMLButtonElement>('focus')
   const overview = node<HTMLButtonElement>('overview')
-  const explore = node<HTMLButtonElement>('explore-earth')
-  const exploreLabel = node('explore-earth-label')
-  const earthToolbar = node('earth-toolbar')
-  const earthKeyHelp = node('earth-key-help')
-  const earthBack = node<HTMLButtonElement>('earth-back')
-  const earthToggle = node<HTMLButtonElement>('earth-info-toggle')
-  const earthPanel = node('earth-panel')
-  const earthClose = node<HTMLButtonElement>('earth-close')
-  const earthQuality = node<HTMLButtonElement>('earth-quality')
-  const earthStatus = node('earth-status')
-  const earthEntryError = node('earth-entry-error')
-  const earthSpeed = node('earth-speed')
-  const earthPosition = node('earth-position')
-  const runLabel = node('run-label')
+  const explore = node<HTMLButtonElement>('explore-planet')
+  const exploreLabel = node('explore-planet-label')
+  const planetToolbar = node('planet-toolbar')
+  const planetViewTitle = node('planet-view-title')
+  const planetKeyHelp = node('planet-key-help')
+  const planetBack = node<HTMLButtonElement>('planet-back')
+  const planetToggle = node<HTMLButtonElement>('planet-info-toggle')
+  const planetPanel = node('planet-panel')
+  const planetQuality = node<HTMLButtonElement>('planet-quality')
+  const planetStatus = node('planet-status')
+  const planetEntryError = node('planet-entry-error')
   const scenarioButtons = root.querySelectorAll<HTMLButtonElement>('[data-scenario]')
   const layerInputs = root.querySelectorAll<HTMLInputElement>('[data-layer]')
-  const rateButtons = root.querySelectorAll<HTMLButtonElement>('[data-rate]')
   const layers: Layers = { orbits: true, trails: true, labels: true, effects: true }
 
   const lifecycle = new AbortController()
@@ -279,18 +233,21 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   let explorerState: ExplorerState = 'overview'
   let selectedId = ''
   let explorerError = ''
+  let selectedSpec: ObjectSpec | undefined
 
   function updateExploreButton() {
-    explore.hidden = selectedId !== 'earth' || explorerState !== 'overview'
+    const profile = explorerProfiles[selectedId]
+    explore.hidden = !profile || !selectedSpec?.detail?.surfaceMap || explorerState !== 'overview'
     const canRetry = !explore.hidden && Boolean(explorerError)
-    exploreLabel.textContent = canRetry ? 'Retry Explore Earth' : 'Explore Earth'
-    earthEntryError.textContent = canRetry ? explorerError : ''
-    earthEntryError.hidden = !canRetry
+    exploreLabel.textContent = canRetry ? 'Повторить загрузку' : 'Исследовать'
+    if (profile && selectedSpec) planetPanel.innerHTML = planetReference(profile, selectedSpec.profile.name)
+    planetEntryError.textContent = canRetry ? explorerError : ''
+    planetEntryError.hidden = !canRetry
   }
   for (const button of scenarioButtons) {
     button.addEventListener('click', () => actions.scenario(button.dataset.scenario!), { signal })
   }
-  list.addEventListener('click', event => {
+  bodySelector.addEventListener('click', event => {
     const button = (event.target as Element).closest<HTMLButtonElement>('[data-body]')
     if (button) actions.select(button.dataset.body!)
   }, { signal })
@@ -300,36 +257,23 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       actions.layers(layers)
     }, { signal })
   }
-  rate.addEventListener('input', () => {
-    const index = Number(rate.value)
-    const value = rates[index]
-    rateValue.textContent = value + '×'
-    rate.setAttribute('aria-valuetext', value + '×')
-    rate.style.setProperty('--progress', index / (rates.length - 1) * 100 + '%')
-    rateButtons.forEach((button, buttonIndex) => button.setAttribute('aria-pressed', String(index === buttonIndex)))
-    actions.rate(value)
-  }, { signal })
-  rateButtons.forEach((button, index) => button.addEventListener('click', () => {
-    rate.value = String(index)
-    rate.dispatchEvent(new Event('input'))
-  }, { signal }))
-  play.addEventListener('click', actions.play, { signal })
-  reset.addEventListener('click', actions.reset, { signal })
   focus.addEventListener('click', actions.focus, { signal })
   overview.addEventListener('click', actions.overview, { signal })
-  explore.addEventListener('click', actions.explore, { signal })
-  earthBack.addEventListener('click', () => {
+  explore.addEventListener('click', () => actions.explore(selectedId), { signal })
+  planetBack.addEventListener('click', () => {
     if (explorerState !== 'exiting') actions.exitExplorer()
   }, { signal })
-  earthToggle.addEventListener('click', actions.toggleExplorerPanel, { signal })
-  earthClose.addEventListener('click', actions.toggleExplorerPanel, { signal })
-  earthQuality.addEventListener('click', () => {
-    if (earthQuality.getAttribute('aria-disabled') !== 'true') actions.upgradeEarth()
+  planetToggle.addEventListener('click', actions.toggleExplorerPanel, { signal })
+  planetPanel.addEventListener('click', event => {
+    if ((event.target as Element).closest('#planet-close')) actions.toggleExplorerPanel()
+  }, { signal })
+  planetQuality.addEventListener('click', () => {
+    if (planetQuality.getAttribute('aria-disabled') !== 'true') actions.upgradePlanetSurface()
   }, { signal })
 
   viewport.addEventListener('keydown', event => {
     if (event.target !== viewport || explorerState !== 'exploring' || event.altKey || event.ctrlKey || event.metaKey) return
-    if (actions.earthCameraKey(event.key)) event.preventDefault()
+    if (actions.planetCameraKey(event.key)) event.preventDefault()
   }, { signal })
 
   document.addEventListener('keydown', event => {
@@ -340,11 +284,6 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     }
     if (event.target instanceof Element
       && event.target.closest('button, input, textarea, select, a, summary, [contenteditable]')) return
-    if (event.code === 'Space') {
-      event.preventDefault()
-      actions.play()
-    }
-    if (event.code === 'KeyR') actions.reset()
     if (event.code === 'KeyH') actions.overview()
   }, { signal })
 
@@ -354,24 +293,29 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       topSystem.textContent = scenario.name
       viewTitle.textContent = scenario.name
       description.textContent = scenario.description
-      objectCount.textContent = String(scenario.objects.length).padStart(2, '0')
       for (const button of scenarioButtons) button.setAttribute('aria-pressed', String(button.dataset.scenario === scenario.id))
-      list.innerHTML = scenario.objects.map(spec => `
-        <button type="button" class="object-row" data-body="${spec.id}" aria-pressed="false">
-          <span class="object-dot${stars(spec.appearance.kind) ? ' stellar' : ''}" style="--body-color:${spec.appearance.color}"></span>
-          <span>${spec.profile.name}</span><span class="object-chevron">${icon('arrow', 12)}</span>
-        </button>`).join('')
+      bodySelector.innerHTML = `<span class="body-selector-label">${scenario.objects.length} небесных тел</span>` + scenario.objects.map(spec => {
+        const map = spec.detail?.surfaceMap?.url ?? spec.appearance.thumbnail
+        const image = map
+          ? `url('${new URL(map, new URL(import.meta.env.BASE_URL, location.href)).href}')`
+          : `radial-gradient(circle at 34% 28%, ${spec.appearance.color}, #07101b 76%)`
+        return `<button type="button" class="body-choice" data-body="${spec.id}" aria-pressed="false" aria-label="Выбрать ${spec.profile.name}">
+          <span class="body-thumbnail ${stars(spec.appearance.kind) ? 'stellar' : ''}" style="--body-color:${spec.appearance.color};--body-image:${image}"></span>
+          <span>${spec.profile.name}</span>
+        </button>`
+      }).join('')
     },
     selected(spec: ObjectSpec) {
       selectedId = spec.id
+      selectedSpec = spec
       updateExploreButton()
-      for (const button of list.querySelectorAll<HTMLButtonElement>('[data-body]')) {
+      for (const button of bodySelector.querySelectorAll<HTMLButtonElement>('[data-body]')) {
         button.setAttribute('aria-pressed', String(button.dataset.body === spec.id))
       }
       const { profile } = spec
       objectType.textContent = profile.classification
       objectName.textContent = profile.name
-      inspectLabel.textContent = 'Inspect ' + profile.name
+      inspectLabel.textContent = 'Сведения: ' + profile.name
       profileOverview.textContent = profile.overview ?? ''
       profileOverview.hidden = !profile.overview
       emblem.dataset.kind = spec.appearance.kind
@@ -381,69 +325,61 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       mass.textContent = scientific(spec.mass)
       radius.textContent = format.format(profile.radiusKm)
     },
-    readings(body: Body, years: number) {
-      elapsed.textContent = (years * 365.25).toFixed(2)
-      speed.textContent = (magnitude(body.velocity) * 4.74047).toFixed(2)
+    readings(body: Body) {
+      speed.textContent = precise.format(magnitude(body.velocity) * 4.74047)
       acceleration.textContent = precise.format(magnitude(body.acceleration))
       x.textContent = coordinate(body.position[0])
       y.textContent = coordinate(body.position[1])
       z.textContent = coordinate(body.position[2])
-      if (body.id === 'earth') {
-        earthSpeed.textContent = speed.textContent
-        earthPosition.textContent = body.position.map(coordinate).join(' / ')
-      }
     },
     explorer(state: ExplorerState, panelOpen: boolean, quality: ExplorerQuality, errorMessage = '') {
       const previous = explorerState
-      const wasInsidePanel = earthPanel.contains(document.activeElement)
-      const wasInsideExplorer = wasInsidePanel || earthToolbar.contains(document.activeElement) || document.activeElement === viewport
-      const qualityHadFocus = document.activeElement === earthQuality
+      const wasInsidePanel = planetPanel.contains(document.activeElement)
+      const wasInsideExplorer = wasInsidePanel || planetToolbar.contains(document.activeElement) || document.activeElement === viewport
+      const qualityHadFocus = document.activeElement === planetQuality
       explorerState = state
       explorerError = errorMessage
+      planetViewTitle.textContent = selectedSpec ? 'Исследование: ' + selectedSpec.profile.name : 'Исследование планеты'
       const active = state !== 'overview'
       const panelVisible = state === 'exploring' && panelOpen
-      root.dataset.earthState = state
-      root.dataset.earthPanel = panelVisible ? 'open' : 'closed'
-      viewport.setAttribute('aria-labelledby', active ? 'earth-view-title' : 'view-title')
+      root.dataset.planetState = state
+      root.dataset.planet = selectedId
+      root.dataset.planetPanel = panelVisible ? 'open' : 'closed'
+      viewport.setAttribute('aria-labelledby', active ? 'planet-view-title' : 'view-title')
       viewport.tabIndex = state === 'exploring' ? 0 : -1
-      if (state === 'exploring') viewport.setAttribute('aria-describedby', 'earth-key-help')
+      if (state === 'exploring') viewport.setAttribute('aria-describedby', 'planet-key-help')
       else viewport.removeAttribute('aria-describedby')
-      earthKeyHelp.hidden = state !== 'exploring'
-      earthToolbar.hidden = !active
-      earthPanel.hidden = !panelVisible
-      earthToggle.hidden = state !== 'exploring'
-      earthToggle.setAttribute('aria-expanded', String(panelVisible))
-      earthBack.setAttribute('aria-disabled', String(state === 'exiting'))
-      earthQuality.hidden = state !== 'exploring' || quality === 'unavailable' || quality === 'high'
-      if (earthQuality.hidden && qualityHadFocus && state === 'exploring') earthToggle.focus({ preventScroll: true })
-      earthQuality.setAttribute('aria-disabled', String(quality === 'loading'))
-      earthQuality.textContent = quality === 'loading' ? 'Loading 4K…' : 'Load 4K surface'
-      earthStatus.textContent = errorMessage
-        || (state === 'entering' ? 'Loading Earth’s surface…' : state === 'exiting' ? 'Returning to Solar System…' : '')
-      earthStatus.hidden = !active || !earthStatus.textContent
+      planetKeyHelp.hidden = state !== 'exploring'
+      planetToolbar.hidden = !active
+      planetPanel.hidden = !panelVisible
+      planetToggle.hidden = state !== 'exploring'
+      planetToggle.setAttribute('aria-expanded', String(panelVisible))
+      planetBack.setAttribute('aria-disabled', String(state === 'exiting'))
+      planetQuality.hidden = state !== 'exploring' || quality === 'unavailable' || quality === 'high'
+      if (planetQuality.hidden && qualityHadFocus && state === 'exploring') planetToggle.focus({ preventScroll: true })
+      planetQuality.setAttribute('aria-disabled', String(quality === 'loading'))
+      planetQuality.textContent = quality === 'loading' ? 'Загрузка 4K…' : 'Загрузить поверхность 4K'
+      const planet = selectedSpec?.profile.name ?? 'планеты'
+      planetStatus.textContent = errorMessage
+        || (state === 'entering' ? `Загрузка поверхности: ${planet}…` : state === 'exiting' ? 'Возврат к Солнечной системе…' : '')
+      planetStatus.hidden = !active || !planetStatus.textContent
       updateExploreButton()
       if (previous === 'overview' && active) {
         if (matchMedia('(max-width: 850px)').matches) viewport.scrollIntoView({ block: 'start' })
-        earthBack.focus({ preventScroll: true })
+        planetBack.focus({ preventScroll: true })
       }
-      if (previous === 'entering' && state === 'exploring' && document.activeElement === earthBack) {
+      if (previous === 'entering' && state === 'exploring' && document.activeElement === planetBack) {
         viewport.focus({ preventScroll: true })
       }
-      if (wasInsidePanel && !panelVisible && state === 'exploring') earthToggle.focus({ preventScroll: true })
-      if (previous !== 'exiting' && state === 'exiting') earthBack.focus({ preventScroll: true })
+      if (wasInsidePanel && !panelVisible && state === 'exploring') planetToggle.focus({ preventScroll: true })
+      if (previous !== 'exiting' && state === 'exiting') planetBack.focus({ preventScroll: true })
       if (previous !== 'overview' && !active && wasInsideExplorer && !explore.hidden) {
         explore.focus({ preventScroll: true })
         if (matchMedia('(max-width: 850px)').matches) explore.scrollIntoView({ block: 'nearest' })
       }
     },
-    playing(playing: boolean) {
-      root.classList.toggle('paused', !playing)
-      runLabel.textContent = playing ? 'Simulation live' : 'Simulation paused'
-      play.innerHTML = icon(playing ? 'pause' : 'play', 23)
-      play.setAttribute('aria-label', playing ? 'Pause simulation' : 'Play simulation')
-    },
     sceneError(message: string) {
-      error.innerHTML = '<div>' + icon('info', 23) + '<strong>3D view unavailable</strong><p></p></div>'
+      error.innerHTML = '<div>' + icon('info', 23) + '<strong>3D-сцена недоступна</strong><p></p></div>'
       error.querySelector('p')!.textContent = message
       error.hidden = false
       focus.disabled = true

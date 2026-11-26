@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it } from 'vitest'
 import { G, Simulation, STEP, SOFTENING, type BodyInput, type Vector } from '../src/physics'
 import { scenarios } from '../src/data'
+import { explorerProfiles } from '../src/planet-profiles'
 
 function body(id: string, mass: number, position: Vector, velocity: Vector = [0, 0, 0]): BodyInput {
   return { id, mass, position, velocity }
@@ -228,12 +229,23 @@ describe('fixed-step Velocity Verlet', () => {
 })
 
 describe('preset systems', () => {
+  it('provides shared Explorer data and surface maps for Earth and Mars', () => {
+    const solar = scenarios.find(item => item.id === 'solar')!
+    for (const id of ['earth', 'mars']) {
+      const planet = solar.objects.find(item => item.id === id)!
+      expect(explorerProfiles[id].overview.length).toBeGreaterThan(50)
+      expect(explorerProfiles[id].references.length).toBeGreaterThan(0)
+      expect(planet.detail?.surfaceMap?.url).toBeTruthy()
+    }
+    expect(solar.objects.find(item => item.id === 'mars')?.detail?.surfaceMap?.url).toBe('planets/mars.webp')
+  })
+
   it('keeps catalogue and appearance metadata out of live and forecast state', () => {
     const scenario = scenarios[0]
     const simulation = new Simulation(scenario.objects)
     const index = scenario.objects.findIndex(spec => spec.id === 'venus')
     const spec = scenario.objects[index]
-    expect(spec.profile).toMatchObject({ name: 'Venus', category: 'planet', classification: 'Terrestrial planet' })
+    expect(spec.profile).toMatchObject({ name: 'Венера', category: 'planet', classification: 'Планета земной группы' })
     expect(spec.appearance.kind).toBe('gas')
     expect(simulation.bodies[index]).toEqual({
       id: spec.id, mass: spec.mass, position: spec.position, velocity: spec.velocity,

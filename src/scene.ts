@@ -5,7 +5,7 @@ import type { Simulation } from './physics'
 import { haloMaterial, ringMaterial, surfaceMaterial } from './materials'
 import { addSky } from './sky'
 import { OrbitForecasts, TrailHistory } from './trajectories'
-import { applyEarthCameraKey, EarthCameraArc, EarthGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './earth-explorer'
+import { applyPlanetCameraKey, PlanetCameraArc, PlanetGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './planet-explorer'
 
 export interface Layers {
   orbits: boolean
@@ -38,9 +38,9 @@ function disposeTree(root: THREE.Object3D, retained?: ReadonlySet<THREE.BufferGe
 
 type Visual = ReturnType<SpaceScene['createObject']>
 
-interface EarthSession {
-  earth: Visual
-  globe: EarthGlobe
+interface PlanetSession {
+  planet: Visual
+  globe: PlanetGlobe
   state: Exclude<ExplorerState, 'overview'>
   quality: ExplorerQuality
   error?: string
@@ -90,9 +90,9 @@ export class SpaceScene {
   private readonly loadingMaps = new Set<string>()
   private readonly textureLoader = new THREE.TextureLoader()
   private activeScenario: Scenario | undefined
-  private earthSession: EarthSession | undefined
-  private readonly earthDirection = new THREE.Vector3()
-  private readonly earthArc = new EarthCameraArc()
+  private planetSession: PlanetSession | undefined
+  private readonly planetDirection = new THREE.Vector3()
+  private readonly planetArc = new PlanetCameraArc()
   private visuals: Visual[] = []
   private labelOrder: Visual[] = []
   private meshes: THREE.Object3D[] = []
@@ -157,7 +157,7 @@ export class SpaceScene {
       activePointers = Math.max(0, activePointers - 1)
       const pick = pressed && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) <= 5
       pressed = false
-      if (!pick || this.earthSession) return
+      if (!pick || this.planetSession) return
       const rect = canvas.getBoundingClientRect()
       this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2)
       this.raycaster.setFromCamera(this.pointer, this.camera)
@@ -326,7 +326,7 @@ export class SpaceScene {
       visual.trail.visible = layers.trails
       if (visual.halo) visual.halo.visible = layers.effects
     }
-    if (this.earthSession?.globe.mesh.visible) this.showEarthDetail(this.earthSession, true)
+    if (this.planetSession?.globe.mesh.visible) this.showPlanetDetail(this.planetSession, true)
   }
 
   sampleTrails(simulation: Simulation) {
@@ -338,7 +338,7 @@ export class SpaceScene {
   }
 
   focus(id: string) {
-    if (this.earthSession) return
+    if (this.planetSession) return
     this.focused = this.visuals.find(visual => visual.spec.id === id)
     if (!this.focused) return
     this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.radius * 1.18)
@@ -348,7 +348,7 @@ export class SpaceScene {
   }
 
   overview(immediate = false) {
-    if (this.earthSession) return
+    if (this.planetSession) return
     this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.dirty = true
     this.view = 'overview'
@@ -365,12 +365,12 @@ export class SpaceScene {
     }
   }
 
-  exploreEarth() {
-    if (this.earthSession) return
-    const earth = this.visuals.find(visual => visual.spec.id === 'earth')
-    const detail = earth?.spec.detail
-    if (!earth || !detail?.surfaceMap) return
-    const globe = new EarthGlobe(earth.radius, detail)
+  explorePlanet(id: string) {
+    if (this.planetSession) return
+    const planet = this.visuals.find(visual => visual.spec.id === id)
+    const detail = planet?.spec.detail
+    if (!planet || !detail?.surfaceMap) return
+    const globe = new PlanetGlobe(planet.radius, detail)
     const savedFocus = this.view === 'focus' ? this.focused : undefined
     const savedPosition = this.camera.position.clone()
     const savedTarget = this.controls.target.clone()
@@ -378,84 +378,84 @@ export class SpaceScene {
       savedPosition.sub(savedFocus.group.position)
       savedTarget.sub(savedFocus.group.position)
     }
-    const session: EarthSession = {
-      earth, globe, state: 'entering', ready: false, progress: 0,
+    const session: PlanetSession = {
+      planet: planet, globe, state: 'entering', ready: false, progress: 0,
       quality: detail.surfaceMap.highResolutionUrl && this.renderer.capabilities.maxTextureSize >= 4096
         && matchMedia('(pointer: fine)').matches && Math.min(this.width, this.height) * this.renderer.getPixelRatio() >= 1000
         ? 'available' : 'unavailable',
-      from: this.camera.position.clone().sub(earth.group.position),
-      fromTarget: this.controls.target.clone().sub(earth.group.position),
+      from: this.camera.position.clone().sub(planet.group.position),
+      fromTarget: this.controls.target.clone().sub(planet.group.position),
       savedPosition, savedTarget, savedView: this.view, savedFocus,
       minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance,
     }
-    this.earthSession = session
+    this.planetSession = session
     this.transition = false
     this.controls.enabled = false
     this.controls.enablePan = false
     this.controls.enableDamping = false
     this.updateControls(0)
     this.controls.enableDamping = true
-    earth.group.add(globe.mesh)
+    planet.group.add(globe.mesh)
     this.notifyExplorer(session)
     void globe.loadBase().then(() => {
-      if (this.earthSession !== session || session.state !== 'entering') return
+      if (this.planetSession !== session || session.state !== 'entering') return
       session.ready = true
       this.dirty = true
     }).catch(() => {
-      if (this.earthSession !== session || session.state !== 'entering') return
-      session.error = 'The Earth surface map could not be loaded. Try again.'
+      if (this.planetSession !== session || session.state !== 'entering') return
+      session.error = 'Не удалось загрузить карту поверхности. Попробуйте ещё раз.'
       this.exitExplorer()
     })
   }
 
   exitExplorer() {
-    const session = this.earthSession
+    const session = this.planetSession
     if (!session || session.state === 'exiting') return
     session.globe.abort()
     session.state = 'exiting'
     session.progress = 0
-    session.from.copy(this.camera.position).sub(session.earth.group.position)
-    session.fromTarget.copy(this.controls.target).sub(session.earth.group.position)
+    session.from.copy(this.camera.position).sub(session.planet.group.position)
+    session.fromTarget.copy(this.controls.target).sub(session.planet.group.position)
     this.controls.enabled = false
     this.controls.maxDistance = session.maxDistance
     this.controls.minDistance = Math.min(session.minDistance, this.controls.minDistance)
     this.notifyExplorer(session)
   }
 
-  earthCameraKey(key: string) {
-    return this.earthSession?.state === 'exploring' && applyEarthCameraKey(this.controls, key)
+  planetCameraKey(key: string) {
+    return this.planetSession?.state === 'exploring' && applyPlanetCameraKey(this.controls, key)
   }
 
-  upgradeEarth() {
-    const session = this.earthSession
+  upgradePlanetSurface() {
+    const session = this.planetSession
     if (!session || session.state !== 'exploring' || session.quality !== 'available') return
     session.quality = 'loading'
     session.error = undefined
     this.notifyExplorer(session)
     void session.globe.upgrade().then(() => {
-      if (this.earthSession !== session || session.state !== 'exploring') return
+      if (this.planetSession !== session || session.state !== 'exploring') return
       session.quality = 'high'
       this.dirty = true
       this.notifyExplorer(session)
     }).catch(() => {
-      if (this.earthSession !== session || session.state !== 'exploring') return
+      if (this.planetSession !== session || session.state !== 'exploring') return
       session.quality = 'available'
-      session.error = 'The 4K map could not be loaded. The current map is still available.'
+      session.error = 'Не удалось загрузить карту 4K. Текущая карта по-прежнему доступна.'
       this.notifyExplorer(session)
     })
   }
 
-  private notifyExplorer(session: EarthSession) {
+  private notifyExplorer(session: PlanetSession) {
     this.dirty = true
     this.onExplorer(session.state, session.quality, session.error)
   }
 
-  private showEarthDetail(session: EarthSession, visible: boolean) {
+  private showPlanetDetail(session: PlanetSession, visible: boolean) {
     session.globe.mesh.visible = visible
-    session.earth.surface.visible = !visible
+    session.planet.surface.visible = !visible
     this.labels.hidden = visible || !this.layers.labels
     for (const visual of this.visuals) {
-      visual.group.visible = !visible || visual === session.earth
+      visual.group.visible = !visible || visual === session.planet
       visual.orbit.visible = !visible && this.layers.orbits && visual.orbit.geometry.getAttribute('position').count > 0
       visual.trail.visible = !visible && this.layers.trails
     }
@@ -463,11 +463,11 @@ export class SpaceScene {
   }
 
   private finishExplorer(restore = false) {
-    const session = this.earthSession
+    const session = this.planetSession
     if (!session) return
-    this.showEarthDetail(session, false)
+    this.showPlanetDetail(session, false)
     session.globe.dispose()
-    this.earthSession = undefined
+    this.planetSession = undefined
     this.controls.enabled = true
     this.controls.enablePan = true
     this.controls.minDistance = session.minDistance
@@ -479,8 +479,8 @@ export class SpaceScene {
     this.onExplorer('overview', 'unavailable', restore ? session.error : undefined)
   }
 
-  private updateEarthCamera(session: EarthSession, seconds: number) {
-    const position = session.earth.group.position
+  private updatePlanetCamera(session: PlanetSession, seconds: number) {
+    const position = session.planet.group.position
     session.globe.direction.subVectors(this.lightPositions[0], position).normalize()
     if (session.state === 'exploring') {
       this.delta.subVectors(position, this.anchor)
@@ -496,12 +496,12 @@ export class SpaceScene {
     this.camera.position.copy(session.from).add(position)
     this.controls.target.copy(session.fromTarget).add(position)
     if (entering) {
-      const radius = session.earth.radius
+      const radius = session.planet.radius
       const distance = radius * 3.5 / Math.min(1, this.camera.aspect)
-      this.earthDirection.copy(session.globe.direction).multiplyScalar(0.83)
-      this.earthDirection.y += 0.54
-      this.cameraOffset.copy(this.earthDirection.normalize()).multiplyScalar(distance)
-      this.earthArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
+      this.planetDirection.copy(session.globe.direction).multiplyScalar(0.83)
+      this.planetDirection.y += 0.54
+      this.cameraOffset.copy(this.planetDirection.normalize()).multiplyScalar(distance)
+      this.planetArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
       this.controls.target.lerp(position, t)
       this.updateControls(seconds)
       if (session.progress === 1 && session.ready) {
@@ -509,7 +509,7 @@ export class SpaceScene {
         this.controls.minDistance = radius * 1.55
         this.controls.maxDistance = Math.max(1.75, distance)
         this.controls.enabled = true
-        this.showEarthDetail(session, true)
+        this.showPlanetDetail(session, true)
         session.state = 'exploring'
         this.notifyExplorer(session)
         void session.globe.loadExtras(session.quality !== 'unavailable', () => { this.dirty = true })
@@ -522,10 +522,10 @@ export class SpaceScene {
         this.aim.add(session.savedFocus.group.position)
       }
       this.cameraOffset.sub(position)
-      this.earthArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
+      this.planetArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
       this.controls.target.lerp(this.aim, t)
       this.updateControls(seconds)
-      if (t >= 0.62 && session.globe.mesh.visible) this.showEarthDetail(session, false)
+      if (t >= 0.62 && session.globe.mesh.visible) this.showPlanetDetail(session, false)
       if (session.progress === 1) this.finishExplorer(true)
     }
     return previous !== session.progress
@@ -547,14 +547,14 @@ export class SpaceScene {
     this.sky.stars.material.uniforms.pixelRatio.value = ratio
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
-    if (this.earthSession?.state === 'exploring') {
+    if (this.planetSession?.state === 'exploring') {
       const scale = Math.min(1, previousAspect) / Math.min(1, this.camera.aspect)
       this.camera.position.sub(this.controls.target).multiplyScalar(scale).add(this.controls.target)
-      this.controls.maxDistance = Math.max(1.75, this.earthSession.earth.radius * 3.5 / Math.min(1, this.camera.aspect))
+      this.controls.maxDistance = Math.max(1.75, this.planetSession.planet.radius * 3.5 / Math.min(1, this.camera.aspect))
       this.updateControls(0)
       return
     }
-    if (this.earthSession) return
+    if (this.planetSession) return
     if (this.view === 'overview' && !this.transition) {
       this.camera.position.sub(this.controls.target)
         .multiplyScalar(this.overviewDistance() / previousOverview)
@@ -579,7 +579,7 @@ export class SpaceScene {
   }
 
   private updateCamera(deltaSeconds: number) {
-    if (this.earthSession) return this.updateEarthCamera(this.earthSession, deltaSeconds)
+    if (this.planetSession) return this.updatePlanetCamera(this.planetSession, deltaSeconds)
     const focused = this.focused
     const wasMoving = this.transition
     if (this.view === 'focus' && focused) {
@@ -630,7 +630,7 @@ export class SpaceScene {
     }
     this.dirty = false
     this.renderedTime = simulation.elapsed
-    if (this.layers.trails && !this.earthSession?.globe.mesh.visible) {
+    if (this.layers.trails && !this.planetSession?.globe.mesh.visible) {
       for (const visual of this.visuals) {
         const { trailHistory, history, trail, addHistoryRange } = visual
         if (!trailHistory.pending) continue
