@@ -45,17 +45,26 @@ function renderNebula(renderer: THREE.WebGLRenderer) {
         float azimuth = sampleUv.x * 6.2831853;
         float polar = (1. - sampleUv.y) * 3.1415927;
         vec3 d = vec3(-cos(azimuth) * sin(polar), cos(polar), sin(azimuth) * sin(polar));
-        float band = dot(d, normalize(vec3(.43, .83, -.22)));
-        float dust = fbm(d * 7. + vec3(3.,5.,-9.));
-        float filaments = fbm(d * 24. + vec3(dust * 4., 3., -9.));
-        float midBand = (band + .22) * 4.;
-        float wideBand = (band + .50) * 2.2;
-        float cloud = exp(-midBand * midBand) * smoothstep(.29,.77,dust + .23 * filaments);
-        float farCloud = exp(-wideBand * wideBand) * dust;
-        float knot = pow(max(0.,dot(d,normalize(vec3(-.2,-.83,-.55)))),6.);
-        vec3 col = vec3(.013,.022,.042);
-        col += cloud * vec3(.047,.085,.152) + farCloud * vec3(.02,.034,.08);
-        col += cloud * knot * vec3(.091,.080,.049);
+        // Bake the dust lanes and their embedded star field once, not per frame.
+        float plane = dot(d, normalize(vec3(-.56,.60,-.57)));
+        float cloud = fbm(d * 8. + vec3(3.,5.,-9.));
+        float band = plane - .13 + (cloud - .5) * .23;
+        vec3 stretched = d + vec3(-.56,.60,-.57) * plane * 2.6;
+        float filament = fbm(stretched * 29. + vec3(4.,-2.,7.));
+        float density = smoothstep(.26,.76,cloud * .66 + filament * .47);
+        float core = exp(-band * band * 101.);
+        float glow = exp(-band * band * 17.);
+        float lane = exp(-pow(abs(band + .021 + (filament - .5) * .11) * 23., 2.));
+        float clear = 1. - .79 * lane;
+        float warm = pow(max(0., dot(d, normalize(vec3(.33,-.39,-.86)))), 45.);
+        float cool = pow(max(0., dot(d, normalize(vec3(-.51,-.72,-.47)))), 18.);
+        float pin = pow(smoothstep(.44,1.,noise3(d * 232.)), 7.) * density;
+        vec3 col = vec3(.009,.017,.036) + vec3(.014,.027,.061) * glow * cloud;
+        col += glow * density * vec3(.036,.062,.130);
+        col += core * density * clear * vec3(.105,.101,.237);
+        col += core * clear * density * cool * vec3(.026,.109,.22);
+        col += warm * glow * (.38 + .62 * clear) * density * vec3(.43,.196,.097);
+        col += pin * glow * vec3(.29,.37,.63);
         gl_FragColor = vec4(col, 1.);
       }`,
   }))
@@ -86,7 +95,7 @@ export function addSky(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
       uniform sampler2D nebula;
       varying vec2 sampleUv;
       void main() {
-        vec3 col = mix(vec3(.013,.022,.042), texture2D(nebula, sampleUv).rgb, effects);
+        vec3 col = mix(vec3(.009,.017,.036), texture2D(nebula, sampleUv).rgb, effects);
         gl_FragColor = vec4(col, 1.);
       }`,
   }))
@@ -103,7 +112,7 @@ export function addSky(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
     const radius = 92 + 37 * random()
     positions.set([radius * planar * Math.cos(angle), radius * z, radius * planar * Math.sin(angle)], i * 3)
     const brightness = random() ** 3
-    starData.set([0.85 + brightness * 2.65, 0.28 + brightness * 0.66, random()], i * 3)
+    starData.set([0.72 + brightness * 3.35, 0.23 + brightness * 0.75, random()], i * 3)
   }
   const starGeometry = new THREE.BufferGeometry()
   starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
@@ -127,7 +136,9 @@ export function addSky(scene: THREE.Scene, renderer: THREE.WebGLRenderer) {
       void main() {
         float r = length(gl_PointCoord - .5) * 2.;
         vec3 tint = mix(vec3(.55,.76,1.), vec3(1.,.82,.65), smoothstep(.44,.96,info.y));
-        gl_FragColor = vec4(tint, (1. - smoothstep(.02,.95,r)) * info.x * mix(.6,1.,effects));
+        float core = 1. - smoothstep(.02,.78,r);
+        float bloom = (1. - smoothstep(.10,1.,r)) * smoothstep(.78,.95,info.x) * .30;
+        gl_FragColor = vec4(tint, max(core,bloom) * info.x * mix(.6,1.,effects));
       }`,
   }))
   stars.renderOrder = -2

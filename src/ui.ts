@@ -14,6 +14,7 @@ const icons = {
   frame: '<path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/><circle cx="12" cy="12" r="2"/>',
   orbit: '<ellipse cx="12" cy="12" rx="10" ry="5" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
   trail: '<path d="M3 19c3-7 8-11 13-13M8 21c2-4 4-7 6-8"/><circle cx="18.5" cy="5.5" r="2.5"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>',
   label: '<path d="M4 5h16M12 5v14M8.5 19h7M4 5v3m16-3v3"/>',
   effects: '<path d="m12 2 2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/>',
   play: '<path d="m9 5 11 7-11 7z" fill="currentColor" stroke="none"/>',
@@ -98,9 +99,13 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark">${icon('logo', 24)}</div>
-          <div><h1>Universe<span> Lab</span></h1><p>ORBITAL SIMULATOR</p></div>
+          <div><h1>Universe<span> Lab</span></h1><p>Orbital laboratory</p></div>
         </div>
-        <div class="top-system"><span class="top-slash">/</span> <span id="top-system"></span></div>
+        <div class="top-system">
+          <span class="mode-label">${icon('orbit', 16)}<span class="mode-simulation">Simulation</span><span class="mode-explorer">Earth Explorer</span></span>
+          <span class="top-slash" aria-hidden="true">${icon('arrow', 12)}</span>
+          <span id="top-system"></span>
+        </div>
         <div class="top-status">
           <span class="run-status"><i></i><span id="run-label">Simulation live</span></span>
           <span class="header-divider"></span>
@@ -110,7 +115,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
 
       <main class="workspace" aria-label="Orbital simulation">
         <aside class="catalog" aria-label="Scenarios and objects">
-          <section>
+          <section class="scenario-section">
             <h2 class="section-label">Scenarios</h2>
             <div class="scenario-list">${scenarios.map((scenario, i) => `
               <button type="button" class="scenario" data-scenario="${scenario.id}" aria-pressed="false">
@@ -128,7 +133,6 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
         <section id="viewport" class="viewport" aria-labelledby="view-title" tabindex="-1">
           <div class="viewport-labels" id="viewport-labels"></div>
           <div class="view-header" data-enter>
-            <div class="view-kicker"><span></span> SYSTEM VIEW</div>
             <h2 id="view-title"></h2>
             <p id="view-description"></p>
           </div>
@@ -142,7 +146,10 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             <p class="earth-status" id="earth-status" role="status" hidden></p>
             <button class="earth-action earth-quality" type="button" id="earth-quality" hidden>Load 4K surface</button>
           </div>
-          <button type="button" id="overview" class="overview" title="Return to system view (H)" aria-label="Return to system view">${icon('frame', 19)}</button>
+          <div class="camera-tools">
+            <button type="button" id="overview" class="overview" title="Return to system view (H)" aria-label="Return to system view">${icon('frame', 19)}</button>
+            <a href="#display-layers" class="view-layers" title="Display layers" aria-label="Go to display layers">${icon('layers', 18)}</a>
+          </div>
           <div class="frame-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="view-footer">
             <div class="view-actions">
@@ -157,14 +164,18 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
 
         <aside class="inspector" id="inspector" aria-label="Object inspector and display" tabindex="-1">
           <div class="section-heading"><h2 class="section-label">Object inspector</h2>${icon('focus', 16)}</div>
-          <div class="object-heading" id="object-heading">
-            <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
-            <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
+          <div class="object-card">
+            <div class="object-heading" id="object-heading">
+              <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
+              <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
+            </div>
+            <p id="profile-overview" class="profile-overview" hidden></p>
+            <div class="object-actions">
+              <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Focus camera</button>
+              <button type="button" class="focus-button explore-earth" id="explore-earth" hidden>${icon('orbit', 17)} <span id="explore-earth-label">Explore Earth</span></button>
+            </div>
+            <p class="earth-entry-error" id="earth-entry-error" role="status" hidden></p>
           </div>
-          <p id="profile-overview" class="profile-overview" hidden></p>
-          <button type="button" class="focus-button" id="focus">${icon('focus', 17)} Focus camera</button>
-          <button type="button" class="focus-button explore-earth" id="explore-earth" hidden>${icon('orbit', 17)} <span id="explore-earth-label">Explore Earth</span></button>
-          <p class="earth-entry-error" id="earth-entry-error" role="status" hidden></p>
           <section class="statistics" aria-labelledby="physical-title">
             <h3 id="physical-title" class="section-label">Physical properties</h3>
             <dl class="properties">
@@ -180,7 +191,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
               <div><dt>Z</dt><dd id="coordinate-z"></dd></div>
             </dl>
           </section>
-          <section class="display" aria-labelledby="display-title">
+          <section class="display" id="display-layers" tabindex="-1" aria-labelledby="display-title">
             <h3 id="display-title" class="section-label">Display layers</h3>
             ${displays.map(item => `
               <label class="display-row">
@@ -201,7 +212,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
         <div class="rate-control">
           <div class="rate-meta"><label class="section-label" for="rate">Time scale</label><output for="rate" id="rate-value">1×</output></div>
           <input id="rate" type="range" min="0" max="5" step="1" value="2" aria-valuetext="1×">
-          <div class="rate-ticks" aria-hidden="true"><span>0.25×</span><span>0.5×</span><span>1×</span><span>2×</span><span>4×</span><span>8×</span></div>
+          <div class="rate-ticks" role="group" aria-label="Time scale presets">${rates.map((value, index) =>
+            `<button type="button" data-rate="${index}" aria-pressed="${index === 2}">${value}×</button>`).join('')}</div>
         </div>
         <div class="keyboard"><kbd>Space</kbd> <span>Play / pause</span></div>
       </footer>
@@ -256,6 +268,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const runLabel = node('run-label')
   const scenarioButtons = root.querySelectorAll<HTMLButtonElement>('[data-scenario]')
   const layerInputs = root.querySelectorAll<HTMLInputElement>('[data-layer]')
+  const rateButtons = root.querySelectorAll<HTMLButtonElement>('[data-rate]')
   const layers: Layers = { orbits: true, trails: true, labels: true, effects: true }
 
   const lifecycle = new AbortController()
@@ -290,8 +303,13 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     rateValue.textContent = value + '×'
     rate.setAttribute('aria-valuetext', value + '×')
     rate.style.setProperty('--progress', index / (rates.length - 1) * 100 + '%')
+    rateButtons.forEach((button, buttonIndex) => button.setAttribute('aria-pressed', String(index === buttonIndex)))
     actions.rate(value)
   }, { signal })
+  rateButtons.forEach((button, index) => button.addEventListener('click', () => {
+    rate.value = String(index)
+    rate.dispatchEvent(new Event('input'))
+  }, { signal }))
   play.addEventListener('click', actions.play, { signal })
   reset.addEventListener('click', actions.reset, { signal })
   focus.addEventListener('click', actions.focus, { signal })
