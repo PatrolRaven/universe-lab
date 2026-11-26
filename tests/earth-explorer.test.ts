@@ -1,0 +1,82 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Vector3 } from 'three'
+import { EarthCameraArc, EarthGlobe, loadEarthTexture } from '../src/earth-explorer'
+import { scenarios } from '../src/data'
+import { Simulation } from '../src/physics'
+
+afterEach(() => vi.unstubAllGlobals())
+
+describe('Earth camera arc', () => {
+  it('keeps an opposite-side transition outside the planet and restores its exact ends', () => {
+    const arc = new EarthCameraArc()
+    const out = new Vector3()
+    const from = new Vector3(0.6, 0, 0)
+    const to = new Vector3(-1.4, 0, 0)
+    expect(arc.point(out, from, to, 0).distanceTo(from)).toBeCloseTo(0)
+    for (let i = 0; i <= 100; i++) {
+      expect(arc.point(out, from, to, i / 100).length()).toBeGreaterThan(0.59)
+    }
+    expect(arc.point(out, from, to, 1).distanceTo(to)).toBeCloseTo(0)
+  })
+})
+
+describe('Earth map lifecycle', () => {
+  it('defers the fetch until explicitly loaded, preserves 2K on upgrade failure and releases its bitmap', async () => {
+    const close = vi.fn()
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(new Blob()))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+    vi.stubGlobal('fetch', fetch)
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ close, width: 2048, height: 1024 }))
+    const globe = new EarthGlobe(0.2, { surfaceMap: { url: 'earth/low.webp', highResolutionUrl: 'earth/high.webp' } })
+    expect(fetch).not.toHaveBeenCalled()
+    await globe.loadBase()
+    await expect(globe.upgrade()).rejects.toThrow('404')
+    expect(close).not.toHaveBeenCalled()
+    globe.dispose()
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes a decode that completes after cancellation', async () => {
+    const controller = new AbortController()
+    const close = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Blob())))
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => {
+      controller.abort()
+      return { close }
+    }))
+    await expect(loadEarthTexture('earth/low.webp', controller.signal)).rejects.toMatchObject({ name: 'AbortError' })
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('replaces the old bitmap on a successful 4K upgrade', async () => {
+    const low = vi.fn()
+    const high = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Blob())))
+    vi.stubGlobal('createImageBitmap', vi.fn()
+      .mockResolvedValueOnce({ close: low, width: 2048, height: 1024 })
+      .mockResolvedValueOnce({ close: high, width: 4096, height: 2048 }))
+    const globe = new EarthGlobe(0.2, { surfaceMap: { url: 'earth/low.webp', highResolutionUrl: 'earth/high.webp' } })
+    await globe.loadBase()
+    await globe.upgrade()
+    expect(low).toHaveBeenCalledTimes(1)
+    expect(high).not.toHaveBeenCalled()
+    globe.dispose()
+    expect(high).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the same physical Earth state as a run without the detailed globe', () => {
+    const solar = scenarios[0]
+    const reference = new Simulation(solar.objects)
+    const active = new Simulation(solar.objects)
+    const earth = solar.objects.find(body => body.id === 'earth')!
+    for (let tick = 0; tick < 1200; tick++) {
+      const visual = tick % 60 === 0 ? new EarthGlobe(earth.appearance.size, earth.detail!) : undefined
+      reference.step()
+      active.step()
+      visual?.dispose()
+    }
+    expect(active.elapsed).toBe(reference.elapsed)
+    expect(active.bodies).toEqual(reference.bodies)
+  })
+})

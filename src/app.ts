@@ -4,6 +4,7 @@ import { scenarios, type Scenario } from './data'
 import { Simulation } from './physics'
 import { SpaceScene } from './scene'
 import { createUI } from './ui'
+import type { ExplorerQuality, ExplorerState } from './earth-explorer'
 
 let scenario = scenarios[0]
 let simulation = new Simulation(scenario.objects)
@@ -11,6 +12,10 @@ let selected = 0
 const clock = new SimulationClock(performance.now(), !matchMedia('(prefers-reduced-motion: reduce)').matches, !document.hidden)
 const lifecycle = new AbortController()
 let scene: SpaceScene | undefined
+let explorerState: ExplorerState = 'overview'
+let explorerQuality: ExplorerQuality = 'unavailable'
+let explorerError: string | undefined
+let explorerPanel = false
 let frame = 0
 
 const ui = createUI(document.querySelector('#app')!, scenarios, {
@@ -40,7 +45,34 @@ const ui = createUI(document.querySelector('#app')!, scenarios, {
   },
   overview: () => scene?.overview(),
   layers: layers => scene?.setLayers(layers),
+  explore: () => scene?.exploreEarth(),
+  exitExplorer: () => scene?.exitExplorer(),
+  toggleExplorerPanel,
+  upgradeEarth: () => scene?.upgradeEarth(),
+  escapeExplorer: () => {
+    if (explorerState === 'overview') return false
+    if (explorerState === 'exploring' && explorerPanel) toggleExplorerPanel()
+    else scene?.exitExplorer()
+    return true
+  },
 })
+
+function toggleExplorerPanel() {
+  if (explorerState !== 'exploring') return
+  explorerPanel = !explorerPanel
+  ui.explorer(explorerState, explorerPanel, explorerQuality, explorerError)
+}
+
+function updateExplorer(state: ExplorerState, quality: ExplorerQuality, error?: string) {
+  if (state === 'exploring' && explorerState === 'entering') {
+    explorerPanel = !matchMedia('(max-width: 850px)').matches
+  }
+  if (state !== 'exploring') explorerPanel = false
+  explorerState = state
+  explorerQuality = quality
+  explorerError = error
+  ui.explorer(state, explorerPanel, quality, error)
+}
 
 function updateReadings() {
   ui.readings(simulation.bodies[selected], simulation.elapsed)
@@ -49,6 +81,7 @@ function updateReadings() {
 function select(id: string) {
   const index = scenario.objects.findIndex(body => body.id === id)
   if (index < 0) return
+  if (id !== 'earth' && explorerState !== 'overview') scene?.exitExplorer()
   selected = index
   ui.selected(scenario.objects[index])
   scene?.select(id)
@@ -67,10 +100,10 @@ function load(next: Scenario, initial = false) {
 
 try {
   scene = new SpaceScene(ui.viewport, ui.labels, select, () => {
-    ui.sceneError('The graphics context was lost. Reload the page to restore the 3D view.')
     scene?.dispose()
     scene = undefined
-  })
+    ui.sceneError('The graphics context was lost. Reload the page to restore the 3D view.')
+  }, updateExplorer)
 } catch (error) {
   if (!(error instanceof Error) || error.message !== 'WebGL 2 is unavailable') throw error
   ui.sceneError('Enable hardware acceleration or open this lab in a browser with WebGL 2 support.')

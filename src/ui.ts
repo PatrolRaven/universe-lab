@@ -1,6 +1,8 @@
 ﻿import type { ObjectSpec, Scenario } from './data'
 import type { Body } from './physics'
 import type { Layers } from './scene'
+import type { ExplorerQuality, ExplorerState } from './earth-explorer'
+import { earthProfile } from './earth-profile'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -19,6 +21,8 @@ const icons = {
   reset: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   mouse: '<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 6v4"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>',
+  back: '<path d="m11 5-7 7 7 7M4 12h16"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
 } as const
 
 type Icon = keyof typeof icons
@@ -43,6 +47,39 @@ interface Actions {
   focus: () => void
   overview: () => void
   layers: (layers: Layers) => void
+  explore: () => void
+  exitExplorer: () => void
+  toggleExplorerPanel: () => void
+  upgradeEarth: () => void
+  escapeExplorer: () => boolean
+}
+
+function earthReference() {
+  const links = (items: readonly (readonly [string, string])[]) =>
+    items.map(([label, url]) => '<li><a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a></li>').join('')
+  return `
+    <aside class="earth-panel" id="earth-panel" aria-labelledby="earth-panel-title" hidden>
+      <div class="earth-panel-heading">
+        <h2 id="earth-panel-title">About Earth</h2>
+        <button class="earth-action earth-close" type="button" id="earth-close" aria-label="Close information">${icon('close', 18)}</button>
+      </div>
+      <details open><summary>Overview</summary><p>${earthProfile.overview}</p></details>
+      <details><summary>Physical Properties</summary>
+        <dl class="earth-values">${earthProfile.properties.map(([label, value]) =>
+          '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('')}</dl>
+        <p class="earth-model-label">Simulation readings</p>
+        <dl class="earth-values" id="earth-readings">
+          <div><dt>Speed</dt><dd><span id="earth-speed"></span> km/s</dd></div>
+          <div><dt>Position X, Y, Z</dt><dd><span id="earth-position"></span> AU</dd></div>
+        </dl>
+        <p>These readings use the laboratory’s simplified orbital model.</p>
+      </details>
+      <details><summary>Surface &amp; Structure</summary><p>${earthProfile.surface}</p></details>
+      <details><summary>Atmosphere</summary><p>${earthProfile.atmosphere}</p></details>
+      <details><summary>History</summary><dl class="earth-history">${earthProfile.history.map(([date, description]) =>
+        '<div><dt>' + date + '</dt><dd>' + description + '</dd></div>').join('')}</dl></details>
+      <details><summary>Sources &amp; imagery</summary><ul>${links(earthProfile.references)}${links(earthProfile.imagery)}</ul></details>
+    </aside>`
 }
 
 const stars = (kind: ObjectSpec['appearance']['kind']) => kind === 'star'
@@ -94,6 +131,15 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             <h2 id="view-title"></h2>
             <p id="view-description"></p>
           </div>
+          <div class="earth-toolbar" id="earth-toolbar" hidden>
+            <div class="earth-toolbar-actions">
+              <button class="earth-action" type="button" id="earth-back">${icon('back', 16)} Back to Solar System</button>
+              <button class="earth-action" type="button" id="earth-info-toggle" aria-controls="earth-panel" aria-expanded="false" hidden>${icon('info', 16)} Earth information</button>
+            </div>
+            <h2 id="earth-view-title">Exploring Earth</h2>
+            <p class="earth-status" id="earth-status" role="status" hidden></p>
+            <button class="earth-action earth-quality" type="button" id="earth-quality" hidden>Load 4K surface</button>
+          </div>
           <button type="button" id="overview" class="overview" title="Return to system view (H)" aria-label="Return to system view">${icon('frame', 19)}</button>
           <div class="frame-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="view-footer">
@@ -115,6 +161,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           </div>
           <p id="profile-overview" class="profile-overview" hidden></p>
           <button type="button" class="focus-button" id="focus">${icon('focus', 17)} Focus camera</button>
+          <button type="button" class="focus-button explore-earth" id="explore-earth" hidden>${icon('orbit', 17)} <span id="explore-earth-label">Explore Earth</span></button>
+          <p class="earth-entry-error" id="earth-entry-error" role="status" hidden></p>
           <section class="statistics" aria-labelledby="physical-title">
             <h3 id="physical-title" class="section-label">Physical properties</h3>
             <dl class="properties">
@@ -139,6 +187,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
               </label>`).join('')}
           </section>
         </aside>
+        ${earthReference()}
       </main>
 
       <footer class="timebar" id="simulation" tabindex="-1" aria-label="Simulation controls">
@@ -189,6 +238,18 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const reset = node<HTMLButtonElement>('reset')
   const focus = node<HTMLButtonElement>('focus')
   const overview = node<HTMLButtonElement>('overview')
+  const explore = node<HTMLButtonElement>('explore-earth')
+  const exploreLabel = node('explore-earth-label')
+  const earthToolbar = node('earth-toolbar')
+  const earthBack = node<HTMLButtonElement>('earth-back')
+  const earthToggle = node<HTMLButtonElement>('earth-info-toggle')
+  const earthPanel = node('earth-panel')
+  const earthClose = node<HTMLButtonElement>('earth-close')
+  const earthQuality = node<HTMLButtonElement>('earth-quality')
+  const earthStatus = node('earth-status')
+  const earthEntryError = node('earth-entry-error')
+  const earthSpeed = node('earth-speed')
+  const earthPosition = node('earth-position')
   const runLabel = node('run-label')
   const scenarioButtons = root.querySelectorAll<HTMLButtonElement>('[data-scenario]')
   const layerInputs = root.querySelectorAll<HTMLInputElement>('[data-layer]')
@@ -196,6 +257,17 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
 
   const lifecycle = new AbortController()
   const { signal } = lifecycle
+  let explorerState: ExplorerState = 'overview'
+  let selectedId = ''
+  let explorerError = ''
+
+  function updateExploreButton() {
+    explore.hidden = selectedId !== 'earth' || explorerState !== 'overview'
+    const canRetry = !explore.hidden && Boolean(explorerError)
+    exploreLabel.textContent = canRetry ? 'Retry Explore Earth' : 'Explore Earth'
+    earthEntryError.textContent = canRetry ? explorerError : ''
+    earthEntryError.hidden = !canRetry
+  }
   for (const button of scenarioButtons) {
     button.addEventListener('click', () => actions.scenario(button.dataset.scenario!), { signal })
   }
@@ -221,10 +293,24 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   reset.addEventListener('click', actions.reset, { signal })
   focus.addEventListener('click', actions.focus, { signal })
   overview.addEventListener('click', actions.overview, { signal })
+  explore.addEventListener('click', actions.explore, { signal })
+  earthBack.addEventListener('click', () => {
+    if (explorerState !== 'exiting') actions.exitExplorer()
+  }, { signal })
+  earthToggle.addEventListener('click', actions.toggleExplorerPanel, { signal })
+  earthClose.addEventListener('click', actions.toggleExplorerPanel, { signal })
+  earthQuality.addEventListener('click', () => {
+    if (earthQuality.getAttribute('aria-disabled') !== 'true') actions.upgradeEarth()
+  }, { signal })
 
   document.addEventListener('keydown', event => {
-    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey
-      || (event.target as HTMLElement).closest('button, input, textarea, select, a, [contenteditable]')) return
+    if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.key === 'Escape' && actions.escapeExplorer()) {
+      event.preventDefault()
+      return
+    }
+    if (event.target instanceof Element
+      && event.target.closest('button, input, textarea, select, a, summary, [contenteditable]')) return
     if (event.code === 'Space') {
       event.preventDefault()
       actions.play()
@@ -248,6 +334,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
         </button>`).join('')
     },
     selected(spec: ObjectSpec) {
+      selectedId = spec.id
+      updateExploreButton()
       for (const button of list.querySelectorAll<HTMLButtonElement>('[data-body]')) {
         button.setAttribute('aria-pressed', String(button.dataset.body === spec.id))
       }
@@ -271,6 +359,46 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       x.textContent = coordinate(body.position[0])
       y.textContent = coordinate(body.position[1])
       z.textContent = coordinate(body.position[2])
+      if (body.id === 'earth') {
+        earthSpeed.textContent = speed.textContent
+        earthPosition.textContent = body.position.map(coordinate).join(' / ')
+      }
+    },
+    explorer(state: ExplorerState, panelOpen: boolean, quality: ExplorerQuality, errorMessage = '') {
+      const previous = explorerState
+      const wasInsidePanel = earthPanel.contains(document.activeElement)
+      const wasInsideExplorer = wasInsidePanel || earthToolbar.contains(document.activeElement)
+      const qualityHadFocus = document.activeElement === earthQuality
+      explorerState = state
+      explorerError = errorMessage
+      const active = state !== 'overview'
+      const panelVisible = state === 'exploring' && panelOpen
+      root.dataset.earthState = state
+      root.dataset.earthPanel = panelVisible ? 'open' : 'closed'
+      viewport.setAttribute('aria-labelledby', active ? 'earth-view-title' : 'view-title')
+      earthToolbar.hidden = !active
+      earthPanel.hidden = !panelVisible
+      earthToggle.hidden = state !== 'exploring'
+      earthToggle.setAttribute('aria-expanded', String(panelVisible))
+      earthBack.setAttribute('aria-disabled', String(state === 'exiting'))
+      earthQuality.hidden = state !== 'exploring' || quality === 'unavailable' || quality === 'high'
+      if (earthQuality.hidden && qualityHadFocus && state === 'exploring') earthToggle.focus({ preventScroll: true })
+      earthQuality.setAttribute('aria-disabled', String(quality === 'loading'))
+      earthQuality.textContent = quality === 'loading' ? 'Loading 4K…' : 'Load 4K surface'
+      earthStatus.textContent = errorMessage
+        || (state === 'entering' ? 'Loading Earth’s surface…' : state === 'exiting' ? 'Returning to Solar System…' : '')
+      earthStatus.hidden = !active || !earthStatus.textContent
+      updateExploreButton()
+      if (previous === 'overview' && active) {
+        if (matchMedia('(max-width: 850px)').matches) viewport.scrollIntoView({ block: 'start' })
+        earthBack.focus({ preventScroll: true })
+      }
+      if (wasInsidePanel && !panelVisible && state === 'exploring') earthToggle.focus({ preventScroll: true })
+      if (previous !== 'exiting' && state === 'exiting') earthBack.focus({ preventScroll: true })
+      if (previous !== 'overview' && !active && wasInsideExplorer && !explore.hidden) {
+        explore.focus({ preventScroll: true })
+        if (matchMedia('(max-width: 850px)').matches) explore.scrollIntoView({ block: 'nearest' })
+      }
     },
     playing(playing: boolean) {
       root.classList.toggle('paused', !playing)
@@ -284,6 +412,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       error.hidden = false
       focus.disabled = true
       overview.disabled = true
+      explore.disabled = true
       for (const input of layerInputs) input.disabled = true
     },
     dispose() { lifecycle.abort() },

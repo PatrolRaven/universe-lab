@@ -5,6 +5,7 @@ import type { Simulation } from './physics'
 import { haloMaterial, ringMaterial, surfaceMaterial } from './materials'
 import { addSky } from './sky'
 import { OrbitForecasts, TrailHistory } from './trajectories'
+import { EarthCameraArc, EarthGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './earth-explorer'
 
 export interface Layers {
   orbits: boolean
@@ -32,6 +33,24 @@ function disposeTree(root: THREE.Object3D, retained?: ReadonlySet<THREE.BufferGe
 }
 
 type Visual = ReturnType<SpaceScene['createObject']>
+
+interface EarthSession {
+  earth: Visual
+  globe: EarthGlobe
+  state: Exclude<ExplorerState, 'overview'>
+  quality: ExplorerQuality
+  error?: string
+  ready: boolean
+  progress: number
+  from: THREE.Vector3
+  fromTarget: THREE.Vector3
+  savedPosition: THREE.Vector3
+  savedTarget: THREE.Vector3
+  savedView: 'overview' | 'focus' | 'free'
+  savedFocus: Visual | undefined
+  minDistance: number
+  maxDistance: number
+}
 
 export class SpaceScene {
   private readonly renderer: THREE.WebGLRenderer
@@ -64,6 +83,9 @@ export class SpaceScene {
   private readonly ring = new THREE.RingGeometry(1.3, 2.32, 112)
   private readonly sharedGeometries = new Set<THREE.BufferGeometry>([this.sphere, this.plane, this.ring])
   private activeScenario: Scenario | undefined
+  private earthSession: EarthSession | undefined
+  private readonly earthDirection = new THREE.Vector3()
+  private readonly earthArc = new EarthCameraArc()
   private visuals: Visual[] = []
   private labelOrder: Visual[] = []
   private meshes: THREE.Object3D[] = []
@@ -84,6 +106,7 @@ export class SpaceScene {
     private readonly labels: HTMLElement,
     onSelect: (id: string) => void,
     onContextLoss: () => void,
+    private readonly onExplorer: ExplorerUpdate,
   ) {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('webgl2', { antialias: true, alpha: false })
@@ -127,7 +150,7 @@ export class SpaceScene {
       activePointers = Math.max(0, activePointers - 1)
       const pick = pressed && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) <= 5
       pressed = false
-      if (!pick) return
+      if (!pick || this.earthSession) return
       const rect = canvas.getBoundingClientRect()
       this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2)
       this.raycaster.setFromCamera(this.pointer, this.camera)
@@ -205,6 +228,7 @@ export class SpaceScene {
   }
 
   load(scenario: Scenario, simulation: Simulation) {
+    this.finishExplorer()
     const paths = this.forecasts.get(scenario, simulation, scenario.objects.map(spec => spec.period))
     if (scenario !== this.activeScenario) {
       disposeTree(this.contents, this.sharedGeometries)
@@ -259,6 +283,7 @@ export class SpaceScene {
       visual.trail.visible = layers.trails
       if (visual.halo) visual.halo.visible = layers.effects
     }
+    if (this.earthSession?.globe.mesh.visible) this.showEarthDetail(this.earthSession, true)
   }
 
   sampleTrails(simulation: Simulation) {
@@ -270,6 +295,7 @@ export class SpaceScene {
   }
 
   focus(id: string) {
+    if (this.earthSession) return
     this.focused = this.visuals.find(visual => visual.spec.id === id)
     if (!this.focused) return
     this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.spec.appearance.size * 1.18)
@@ -279,6 +305,7 @@ export class SpaceScene {
   }
 
   overview(immediate = false) {
+    if (this.earthSession) return
     this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.dirty = true
     this.view = 'overview'
@@ -295,6 +322,168 @@ export class SpaceScene {
     }
   }
 
+  exploreEarth() {
+    if (this.earthSession) return
+    const earth = this.visuals.find(visual => visual.spec.id === 'earth')
+    const detail = earth?.spec.detail
+    if (!earth || !detail?.surfaceMap) return
+    const globe = new EarthGlobe(earth.spec.appearance.size, detail)
+    const savedFocus = this.view === 'focus' ? this.focused : undefined
+    const savedPosition = this.camera.position.clone()
+    const savedTarget = this.controls.target.clone()
+    if (savedFocus) {
+      savedPosition.sub(savedFocus.group.position)
+      savedTarget.sub(savedFocus.group.position)
+    }
+    const session: EarthSession = {
+      earth, globe, state: 'entering', ready: false, progress: 0,
+      quality: detail.surfaceMap.highResolutionUrl && this.renderer.capabilities.maxTextureSize >= 4096
+        && matchMedia('(pointer: fine)').matches && Math.min(this.width, this.height) * this.renderer.getPixelRatio() >= 1000
+        ? 'available' : 'unavailable',
+      from: this.camera.position.clone().sub(earth.group.position),
+      fromTarget: this.controls.target.clone().sub(earth.group.position),
+      savedPosition, savedTarget, savedView: this.view, savedFocus,
+      minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance,
+    }
+    this.earthSession = session
+    this.transition = false
+    this.controls.enabled = false
+    this.controls.enablePan = false
+    this.controls.enableDamping = false
+    this.updateControls(0)
+    this.controls.enableDamping = true
+    earth.group.add(globe.mesh)
+    this.notifyExplorer(session)
+    void globe.loadBase().then(() => {
+      if (this.earthSession !== session || session.state !== 'entering') return
+      session.ready = true
+      this.dirty = true
+    }).catch(() => {
+      if (this.earthSession !== session || session.state !== 'entering') return
+      session.error = 'The Earth surface map could not be loaded. Try again.'
+      this.exitExplorer()
+    })
+  }
+
+  exitExplorer() {
+    const session = this.earthSession
+    if (!session || session.state === 'exiting') return
+    session.globe.abort()
+    session.state = 'exiting'
+    session.progress = 0
+    session.from.copy(this.camera.position).sub(session.earth.group.position)
+    session.fromTarget.copy(this.controls.target).sub(session.earth.group.position)
+    this.controls.enabled = false
+    this.controls.maxDistance = session.maxDistance
+    this.controls.minDistance = Math.min(session.minDistance, this.controls.minDistance)
+    this.notifyExplorer(session)
+  }
+
+  upgradeEarth() {
+    const session = this.earthSession
+    if (!session || session.state !== 'exploring' || session.quality !== 'available') return
+    session.quality = 'loading'
+    session.error = undefined
+    this.notifyExplorer(session)
+    void session.globe.upgrade().then(() => {
+      if (this.earthSession !== session || session.state !== 'exploring') return
+      session.quality = 'high'
+      this.dirty = true
+      this.notifyExplorer(session)
+    }).catch(() => {
+      if (this.earthSession !== session || session.state !== 'exploring') return
+      session.quality = 'available'
+      session.error = 'The 4K map could not be loaded. The current map is still available.'
+      this.notifyExplorer(session)
+    })
+  }
+
+  private notifyExplorer(session: EarthSession) {
+    this.dirty = true
+    this.onExplorer(session.state, session.quality, session.error)
+  }
+
+  private showEarthDetail(session: EarthSession, visible: boolean) {
+    session.globe.mesh.visible = visible
+    session.earth.surface.visible = !visible
+    this.labels.hidden = visible || !this.layers.labels
+    for (const visual of this.visuals) {
+      visual.group.visible = !visible || visual === session.earth
+      visual.orbit.visible = !visible && this.layers.orbits && visual.orbit.geometry.getAttribute('position').count > 0
+      visual.trail.visible = !visible && this.layers.trails
+    }
+    this.dirty = true
+  }
+
+  private finishExplorer(restore = false) {
+    const session = this.earthSession
+    if (!session) return
+    this.showEarthDetail(session, false)
+    session.globe.dispose()
+    this.earthSession = undefined
+    this.controls.enabled = true
+    this.controls.enablePan = true
+    this.controls.minDistance = session.minDistance
+    this.controls.maxDistance = session.maxDistance
+    this.view = session.savedView
+    this.focused = session.savedFocus
+    if (this.focused) this.anchor.copy(this.focused.group.position)
+    if (restore) this.updateControls(0)
+    this.onExplorer('overview', 'unavailable', restore ? session.error : undefined)
+  }
+
+  private updateEarthCamera(session: EarthSession, seconds: number) {
+    const position = session.earth.group.position
+    session.globe.direction.subVectors(this.lightPositions[0], position).normalize()
+    if (session.state === 'exploring') {
+      this.delta.subVectors(position, this.anchor)
+      this.camera.position.add(this.delta)
+      this.controls.target.add(this.delta)
+      this.anchor.copy(position)
+      return this.updateControls(seconds)
+    }
+    const previous = session.progress
+    const entering = session.state === 'entering'
+    session.progress = this.reducedMotion.matches ? 1 : Math.min(1, previous + seconds / 0.84)
+    const t = session.progress * session.progress * (3 - 2 * session.progress)
+    this.camera.position.copy(session.from).add(position)
+    this.controls.target.copy(session.fromTarget).add(position)
+    if (entering) {
+      const radius = session.earth.spec.appearance.size
+      const distance = radius * 3.5 / Math.min(1, this.camera.aspect)
+      this.earthDirection.copy(session.globe.direction).multiplyScalar(0.83)
+      this.earthDirection.y += 0.54
+      this.cameraOffset.copy(this.earthDirection.normalize()).multiplyScalar(distance)
+      this.earthArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
+      this.controls.target.lerp(position, t)
+      this.updateControls(seconds)
+      if (session.progress === 1 && session.ready) {
+        this.anchor.copy(position)
+        this.controls.minDistance = radius * 1.55
+        this.controls.maxDistance = Math.max(1.75, distance)
+        this.controls.enabled = true
+        this.showEarthDetail(session, true)
+        session.state = 'exploring'
+        this.notifyExplorer(session)
+        void session.globe.loadExtras(session.quality !== 'unavailable', () => { this.dirty = true })
+      }
+    } else {
+      this.cameraOffset.copy(session.savedPosition)
+      this.aim.copy(session.savedTarget)
+      if (session.savedFocus) {
+        this.cameraOffset.add(session.savedFocus.group.position)
+        this.aim.add(session.savedFocus.group.position)
+      }
+      this.cameraOffset.sub(position)
+      this.earthArc.point(this.camera.position, session.from, this.cameraOffset, t).add(position)
+      this.controls.target.lerp(this.aim, t)
+      this.updateControls(seconds)
+      if (t >= 0.62 && session.globe.mesh.visible) this.showEarthDetail(session, false)
+      if (session.progress === 1) this.finishExplorer(true)
+    }
+    return previous !== session.progress
+  }
+
   private overviewDistance() {
     return this.frame * 2.04 / Math.min(1, this.camera.aspect / 1.08)
   }
@@ -302,6 +491,7 @@ export class SpaceScene {
   private resize() {
     this.dirty = true
     const previousOverview = this.overviewDistance()
+    const previousAspect = this.camera.aspect
     this.width = Math.max(1, this.viewport.clientWidth)
     this.height = Math.max(1, this.viewport.clientHeight)
     const ratio = Math.min(window.devicePixelRatio || 1, 1.65)
@@ -310,6 +500,14 @@ export class SpaceScene {
     this.sky.stars.material.uniforms.pixelRatio.value = ratio
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
+    if (this.earthSession?.state === 'exploring') {
+      const scale = Math.min(1, previousAspect) / Math.min(1, this.camera.aspect)
+      this.camera.position.sub(this.controls.target).multiplyScalar(scale).add(this.controls.target)
+      this.controls.maxDistance = Math.max(1.75, this.earthSession.earth.spec.appearance.size * 3.5 / Math.min(1, this.camera.aspect))
+      this.updateControls(0)
+      return
+    }
+    if (this.earthSession) return
     if (this.view === 'overview' && !this.transition) {
       this.camera.position.sub(this.controls.target)
         .multiplyScalar(this.overviewDistance() / previousOverview)
@@ -334,6 +532,7 @@ export class SpaceScene {
   }
 
   private updateCamera(deltaSeconds: number) {
+    if (this.earthSession) return this.updateEarthCamera(this.earthSession, deltaSeconds)
     const focused = this.focused
     const wasMoving = this.transition
     if (this.view === 'focus' && focused) {
@@ -384,7 +583,7 @@ export class SpaceScene {
     }
     this.dirty = false
     this.renderedTime = simulation.elapsed
-    if (this.layers.trails) {
+    if (this.layers.trails && !this.earthSession?.globe.mesh.visible) {
       for (const visual of this.visuals) {
         const { trailHistory, history, trail, addHistoryRange } = visual
         if (!trailHistory.pending) continue
@@ -394,7 +593,7 @@ export class SpaceScene {
         trail.geometry.setDrawRange(trailHistory.first, trailHistory.length)
       }
     }
-    if (this.layers.labels) this.positionLabels()
+    if (!this.labels.hidden) this.positionLabels()
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -461,6 +660,7 @@ export class SpaceScene {
   }
 
   dispose() {
+    this.finishExplorer()
     this.resizeObserver.disconnect()
     this.lifecycle.abort()
     this.controls.dispose()

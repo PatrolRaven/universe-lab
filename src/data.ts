@@ -24,6 +24,7 @@ export interface BodyProfile {
 
 interface MapAsset {
   url: string
+  highResolutionUrl?: string
   credit?: string
 }
 
@@ -31,6 +32,8 @@ export interface DetailedAppearance {
   surfaceMap?: MapAsset
   elevationMap?: MapAsset & { minElevationKm: number; maxElevationKm: number }
   cloudMap?: MapAsset
+  normalMap?: MapAsset
+  nightMap?: MapAsset
   atmosphere?: { color: string; scaleHeightKm: number }
 }
 
@@ -64,12 +67,13 @@ function orbit(
   parent: Pick<BodyInput, 'mass' | 'position' | 'velocity'>, id: string, name: string, mass: number, radius: number, distance: number,
   angle: number, inclination: number, appearance: Appearance, classification: string,
   details: Partial<Pick<BodyProfile, 'category' | 'overview'>> = {},
+  detail?: DetailedAppearance,
 ): ObjectSpec {
   const speed = Math.sqrt(G * parent.mass * distance ** 2 / (distance ** 2 + SOFTENING ** 2) ** 1.5)
   const radial: Vector = [Math.cos(angle), Math.sin(angle) * Math.sin(inclination), Math.sin(angle) * Math.cos(inclination)]
   const tangent: Vector = [-Math.sin(angle), Math.cos(angle) * Math.sin(inclination), Math.cos(angle) * Math.cos(inclination)]
   return {
-    id, mass, appearance,
+    id, mass, appearance, detail,
     profile: { name, category: 'planet', classification, radiusKm: radius, ...details },
     position: radial.map((value, axis) => parent.position[axis] + distance * value) as Vector,
     velocity: tangent.map((value, axis) => parent.velocity[axis] + speed * value) as Vector,
@@ -99,7 +103,12 @@ const solar = center([
     { color: '#e7b674', dark: '#995231', accent: '#ffe4a2', size: 0.169, kind: 'gas' }, 'Terrestrial planet'),
   orbit(sun, 'earth', 'Earth', 3.003e-6, 6371, 2.49, 0.1, 0,
     { color: '#3b9aff', dark: '#123778', accent: '#77b091', size: 0.197, kind: 'terrestrial' }, 'Terrestrial planet',
-    { overview: 'The third planet from the Sun has liquid-water oceans and a nitrogen-rich atmosphere.' }),
+    { overview: 'The third planet from the Sun has liquid-water oceans and a nitrogen-rich atmosphere.' },
+    {
+      surfaceMap: { url: 'earth/albedo-2k.webp', highResolutionUrl: 'earth/albedo-4k.webp', credit: 'NASA Earth Observatory' },
+      normalMap: { url: 'earth/normal-1k.webp', highResolutionUrl: 'earth/normal-2k.webp', credit: 'NOAA NCEI ETOPO 2022' },
+      nightMap: { url: 'earth/night-1k.webp', credit: 'NASA Earth Observatory' },
+    }),
   orbit(sun, 'mars', 'Mars', 3.227e-7, 3389.5, 3.49, 4.45, 0.025,
     { color: '#dd7756', dark: '#793530', accent: '#f9bc87', size: 0.145, kind: 'rock' }, 'Terrestrial planet'),
   orbit(sun, 'jupiter', 'Jupiter', 9.546e-4, 69911, 4.99, 2.8, 0.013,
