@@ -371,6 +371,10 @@ export class SpaceScene {
     const detail = planet?.spec.detail
     if (!planet || !detail?.surfaceMap) return
     const globe = new PlanetGlobe(planet.radius, detail)
+    const enableDamping = this.controls.enableDamping
+    this.controls.enableDamping = false
+    this.updateControls(0)
+    this.controls.enableDamping = enableDamping
     const savedFocus = this.view === 'focus' ? this.focused : undefined
     const savedPosition = this.camera.position.clone()
     const savedTarget = this.controls.target.clone()
@@ -392,9 +396,6 @@ export class SpaceScene {
     this.transition = false
     this.controls.enabled = false
     this.controls.enablePan = false
-    this.controls.enableDamping = false
-    this.updateControls(0)
-    this.controls.enableDamping = true
     planet.group.add(globe.mesh)
     this.notifyExplorer(session)
     void globe.loadBase().then(() => {
@@ -538,7 +539,6 @@ export class SpaceScene {
   private resize() {
     this.dirty = true
     const previousOverview = this.overviewDistance()
-    const previousAspect = this.camera.aspect
     this.width = Math.max(1, this.viewport.clientWidth)
     this.height = Math.max(1, this.viewport.clientHeight)
     const ratio = Math.min(window.devicePixelRatio || 1, 1.65)
@@ -548,10 +548,7 @@ export class SpaceScene {
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
     if (this.planetSession?.state === 'exploring') {
-      const scale = Math.min(1, previousAspect) / Math.min(1, this.camera.aspect)
-      this.camera.position.sub(this.controls.target).multiplyScalar(scale).add(this.controls.target)
       this.controls.maxDistance = Math.max(1.75, this.planetSession.planet.radius * 3.5 / Math.min(1, this.camera.aspect))
-      this.updateControls(0)
       return
     }
     if (this.planetSession) return
