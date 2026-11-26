@@ -411,6 +411,9 @@ svg { flex-shrink: 0; vertical-align: middle; }
   #app:is([data-planet-state="entering"], [data-planet-state="exploring"], [data-planet-state="exiting"]) .catalog {
     display: none;
   }
+  #app:is([data-planet-state="entering"], [data-planet-state="exiting"]) .workspace {
+    grid-template-columns: minmax(0,1fr);
+  }
   #app[data-planet-state="exploring"][data-planet-panel="closed"] .workspace {
     grid-template-columns: minmax(0,1fr);
   }
