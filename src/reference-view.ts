@@ -39,12 +39,6 @@ interface ArticleOptions {
 
 export function articleContent(entry: CatalogEntry, { actions = false, titleId }: ArticleOptions = {}) {
   const { name, englishName, classification, category, profile, scene } = entry
-  const sections = [
-    [profile.surfaceTitle ?? 'Поверхность', profile.surface],
-    [profile.atmosphereTitle ?? 'Атмосфера', profile.atmosphere],
-    [profile.interiorTitle ?? 'Внутреннее строение', profile.interior],
-    ['Естественные спутники', profile.moons],
-  ] as const
   const sources = [...profile.references, ...(profile.imagery ?? [])]
   return `
     <header class="encyclopedia-hero">
@@ -66,8 +60,13 @@ export function articleContent(entry: CatalogEntry, { actions = false, titleId }
         <dl class="encyclopedia-metrics">${profile.properties.map(([label, value]) =>
           `<div><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>
       </section>` : ''}
-      ${sections.map(([heading, detail]) => detail ? `<section class="encyclopedia-section">
-        <h3>${escape(heading)}</h3><p>${escape(detail)}</p>
+      ${[
+        [profile.surfaceTitle ?? 'Поверхность', profile.surface],
+        [profile.atmosphereTitle ?? 'Атмосфера', profile.atmosphere],
+        [profile.interiorTitle ?? 'Внутреннее строение', profile.interior],
+        ['Естественные спутники', profile.moons],
+      ].map(([heading, detail]) => detail ? `<section class="encyclopedia-section">
+        <h3>${escape(heading!)}</h3><p>${escape(detail!)}</p>
       </section>` : '').join('')}
       ${profile.history?.length ? `<section class="encyclopedia-section">
         <h3>История исследований</h3>

@@ -145,15 +145,19 @@ export function createLibrary(element: HTMLElement, entries: CatalogEntry[], ope
   let failedGlobe: HTMLButtonElement | undefined
 
   function renderArticle() {
-    if (element.hidden || (narrow.matches && element.dataset.libraryPane === 'index')) return
+    if (element.hidden) return
+    if (narrow.matches && element.dataset.libraryPane === 'index') {
+      return
+    }
     const id = selected?.id ?? ''
-    if (id === renderedId) return
-    renderedId = id
-    article.innerHTML = selected
-      ? articleContent(selected, { actions: true, titleId: 'library-object-title' })
-      : '<div class="encyclopedia-empty"><h2 id="library-object-title" tabindex="-1">Объекты не найдены</h2><p>Измените запрос или выберите другую категорию.</p></div>'
-    article.setAttribute('aria-labelledby', 'library-object-title')
-    reading.scrollTop = 0
+    if (id !== renderedId) {
+      renderedId = id
+      article.innerHTML = selected
+        ? articleContent(selected, { actions: true, titleId: 'library-object-title' })
+        : '<div class="encyclopedia-empty"><h2 id="library-object-title" tabindex="-1">Объекты не найдены</h2><p>Измените запрос или выберите другую категорию.</p></div>'
+      article.setAttribute('aria-labelledby', 'library-object-title')
+      reading.scrollTop = 0
+    }
   }
 
   function markSelection() {

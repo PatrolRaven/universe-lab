@@ -215,3 +215,12 @@
   .encyclopedia-hero .object-figure { width: min(100%, 360px); }
   .encyclopedia-timeline div { grid-template-columns: 1fr; gap: 3px; }
 }
+
+@media (max-width: 480px) {
+  .encyclopedia-section-heading { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 360px) {
+  #app:is([data-view="library"], [data-view="reference"]) .topbar { gap: 4px; padding-inline: 6px; }
+  #app:is([data-view="library"], [data-view="reference"]) .brand-mark { width: 24px; }
+}

@@ -1,4 +1,4 @@
-﻿import type { ObjectSpec, Scenario } from './data'
+import type { ObjectSpec, Scenario } from './data'
 import type { Body } from './physics'
 import type { Layers } from './scene'
 import { galaxyDestinations } from './galaxy'
