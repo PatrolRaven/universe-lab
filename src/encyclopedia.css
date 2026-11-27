@@ -162,6 +162,16 @@
 
 .encyclopedia-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 .encyclopedia-actions button { min-height: 44px; padding-inline: 12px; }
+.encyclopedia-intro > .encyclopedia-speech,
+.encyclopedia-speech-unavailable { margin-top: 18px; }
+.encyclopedia-section-heading,
+.encyclopedia-speech { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.encyclopedia-section-heading { justify-content: space-between; margin-bottom: 14px; }
+.encyclopedia-speech button { min-height: 44px; padding-inline: 12px; }
+.encyclopedia-speech-status,
+.encyclopedia-speech-unavailable { color: #a8b7cc; font-size: 13px; }
+.encyclopedia-speech-status { flex-basis: 100%; }
+.encyclopedia-speech-status:empty { position: absolute; }
 #library-error { margin: 12px 0; color: #ffc889; font-size: 13px; }
 .encyclopedia-reading > #library-error { padding-inline: 20px; }
 
@@ -178,6 +188,8 @@
   color: #edf3fb;
   font: 600 clamp(25px, 2.8vw, 36px)/1.05 var(--display);
 }
+
+.encyclopedia-section-heading h3 { margin: 0; }
 
 .encyclopedia-section p { max-width: 69ch; font-size: 17px; line-height: 1.65; }
 .encyclopedia-metrics {
@@ -214,4 +226,13 @@
   .encyclopedia-hero { gap: 22px; }
   .encyclopedia-hero .object-figure { width: min(100%, 360px); }
   .encyclopedia-timeline div { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media (max-width: 480px) {
+  .encyclopedia-section-heading { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 360px) {
+  #app:is([data-view="library"], [data-view="reference"]) .topbar { gap: 4px; padding-inline: 6px; }
+  #app:is([data-view="library"], [data-view="reference"]) .brand-mark { width: 24px; }
 }
