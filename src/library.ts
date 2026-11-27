@@ -1,7 +1,7 @@
 import type { ObjectSpec, Scenario } from './data'
 import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
 import { solarCatalog } from './solar-catalog'
-import { articleContent, handleMediaError, type createArticleNarration } from './reference-view'
+import { articleContent, handleMediaError } from './reference-view'
 import './encyclopedia.css'
 
 export const categoryNames = {
@@ -94,7 +94,7 @@ function normalize(text: string) {
 
 export type CatalogAction = 'reference' | 'globe' | 'show'
 
-export function createLibrary(element: HTMLElement, entries: CatalogEntry[], open: (entry: CatalogEntry, action: CatalogAction) => void, narration: ReturnType<typeof createArticleNarration>, signal: AbortSignal) {
+export function createLibrary(element: HTMLElement, entries: CatalogEntry[], open: (entry: CatalogEntry, action: CatalogAction) => void, signal: AbortSignal) {
   const kinds = (Object.keys(categoryNames) as CatalogEntry['category'][])
     .filter(kind => entries.some(entry => entry.category === kind))
   const narrow = matchMedia('(max-width: 700px)')
@@ -147,20 +147,17 @@ export function createLibrary(element: HTMLElement, entries: CatalogEntry[], ope
   function renderArticle() {
     if (element.hidden) return
     if (narrow.matches && element.dataset.libraryPane === 'index') {
-      narration.stop()
       return
     }
     const id = selected?.id ?? ''
     if (id !== renderedId) {
-      narration.stop()
       renderedId = id
       article.innerHTML = selected
-        ? articleContent(selected, { actions: true, titleId: 'library-object-title', speechAvailable: narration.available })
+        ? articleContent(selected, { actions: true, titleId: 'library-object-title' })
         : '<div class="encyclopedia-empty"><h2 id="library-object-title" tabindex="-1">Объекты не найдены</h2><p>Измените запрос или выберите другую категорию.</p></div>'
       article.setAttribute('aria-labelledby', 'library-object-title')
       reading.scrollTop = 0
     }
-    narration.attach(article, selected)
   }
 
   function markSelection() {
@@ -205,7 +202,6 @@ export function createLibrary(element: HTMLElement, entries: CatalogEntry[], ope
   element.addEventListener('click', event => {
     if (!(event.target instanceof Element)) return
     if (event.target.closest('[data-library-list]')) {
-      narration.stop()
       articleScroll = reading.scrollTop
       element.dataset.libraryPane = 'index'
       index.scrollTop = indexScroll
