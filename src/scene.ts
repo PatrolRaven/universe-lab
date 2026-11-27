@@ -4,6 +4,7 @@ import type { ObjectSpec, Scenario } from './data'
 import type { Simulation } from './physics'
 import { haloMaterial, ringMaterial, surfaceMaterial } from './materials'
 import { addSky } from './sky'
+import { Galaxy } from './galaxy'
 import { OrbitForecasts, TrailHistory } from './trajectories'
 import { applyPlanetCameraKey, PlanetCameraArc, PlanetGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './planet-explorer'
 
@@ -61,6 +62,8 @@ export class SpaceScene {
   private readonly scene = new THREE.Scene()
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.025, 245)
   private readonly controls: OrbitControls
+  private readonly galaxy: Galaxy
+  private viewingGalaxy = false
   private readonly contents = new THREE.Group()
   private readonly sky: ReturnType<typeof addSky>
   private readonly raycaster = new THREE.Raycaster()
@@ -114,6 +117,7 @@ export class SpaceScene {
     onSelect: (id: string) => void,
     onContextLoss: () => void,
     private readonly onExplorer: ExplorerUpdate,
+    marker: HTMLButtonElement,
   ) {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('webgl2', { antialias: true, alpha: false })
@@ -132,6 +136,7 @@ export class SpaceScene {
     this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.controls.maxDistance = 48
     this.controls.zoomSpeed = 0.8
+    this.galaxy = new Galaxy(canvas, marker, matchMedia('(max-width: 720px)').matches)
 
     this.controls.addEventListener('change', () => {
       this.dirty = true
@@ -142,6 +147,9 @@ export class SpaceScene {
     })
 
     const { signal } = this.lifecycle
+    this.reducedMotion.addEventListener('change', event => {
+      this.galaxy.controls.enableDamping = !event.matches
+    }, { signal })
     let pickPointer: number | undefined
     const activePointers = new Set<number>()
     canvas.addEventListener('pointerdown', event => {
@@ -163,7 +171,7 @@ export class SpaceScene {
     canvas.addEventListener('pointerup', event => {
       const pick = event.pointerId === pickPointer && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) <= 5
       clearPointer(event)
-      if (!pick || this.planetSession) return
+      if (!pick || this.planetSession || this.viewingGalaxy) return
       const rect = canvas.getBoundingClientRect()
       this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2)
       this.raycaster.setFromCamera(this.pointer, this.camera)
@@ -213,7 +221,7 @@ export class SpaceScene {
     const orbitGeometry = new THREE.BufferGeometry()
     orbitGeometry.setAttribute('position', new THREE.BufferAttribute(path, 3))
     const orbit = new THREE.Line(orbitGeometry, new THREE.LineBasicMaterial({
-      color: '#658bab', transparent: true, opacity: 0.33, depthWrite: false,
+      color: '#82adc8', transparent: true, opacity: 0.42, depthWrite: false,
     }))
     orbit.renderOrder = -1
 
@@ -224,7 +232,7 @@ export class SpaceScene {
     trailGeometry.setAttribute('position', history)
     trailGeometry.setDrawRange(0, 0)
     const trail = new THREE.Line(trailGeometry, new THREE.LineBasicMaterial({
-      color: appearance.color, transparent: true, opacity: 0.64, depthWrite: false,
+      color: appearance.color, transparent: true, opacity: 0.51, depthWrite: false,
     }))
     trail.frustumCulled = false
     trail.renderOrder = 1
@@ -560,9 +568,13 @@ export class SpaceScene {
     const previousAspect = this.camera.aspect
     this.width = width
     this.height = height
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.65)
+    const ratio = Math.min(window.devicePixelRatio || 1, this.viewingGalaxy && width <= 720 ? 1.25 : 1.65)
     this.renderer.setPixelRatio(ratio)
     this.renderer.setSize(this.width, this.height, false)
+    if (this.viewingGalaxy) {
+      this.galaxy.resize(width, height, ratio)
+      return
+    }
     this.sky.stars.material.uniforms.pixelRatio.value = ratio
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
@@ -634,6 +646,18 @@ export class SpaceScene {
     this.applyingCamera = false
     return moved
   }
+
+  setGalaxy(active: boolean) {
+    this.viewingGalaxy = active
+    this.controls.enabled = !active
+    this.galaxy.setActive(active)
+    this.resize()
+  }
+
+  galaxyOverview() { this.galaxy.overview() }
+  locateSun() { this.galaxy.locateSun() }
+  galaxyKey(key: string, shift: boolean) { return this.galaxy.key(key, shift) }
+  renderGalaxy() { this.galaxy.render(this.renderer, this.width, this.height) }
 
   render(simulation: Simulation, deltaSeconds: number) {
     const stepped = simulation.elapsed !== this.renderedTime
@@ -732,6 +756,7 @@ export class SpaceScene {
     for (const texture of this.surfaceMaps.values()) texture.dispose()
     this.surfaceMaps.clear()
     this.controls.dispose()
+    this.galaxy.dispose()
     disposeTree(this.scene, this.sharedGeometries)
     for (const geometry of this.sharedGeometries) geometry.dispose()
     this.sky.background.dispose()
