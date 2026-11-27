@@ -125,6 +125,13 @@ const solar = center([
     { color: '#6f92fa', dark: '#282a8b', accent: '#b4caff', size: 0.232, kind: 'ice', thumbnail: 'planets/neptune.webp' }, 'Ледяной гигант'),
 ])
 
+for (const body of solar) {
+  const map = body.appearance.thumbnail
+  if (map && !body.detail) {
+    body.detail = { surfaceMap: { url: map, credit: 'Solar System Scope / INOVE, CC BY 4.0' } }
+  }
+}
+
 const primary = star('atlas', 'Атлас A', 1.15, 770000, 0.51, '#ffb354')
 const companion = star('atlas-b', 'Атлас B', 0.78, 590000, 0.39, '#92c4ff')
 companion.appearance.dark = '#466fe6'

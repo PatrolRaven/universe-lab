@@ -2,8 +2,7 @@
 import type { Body } from './physics'
 import type { Layers } from './scene'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
-import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
-import { catalogEntries, createLibrary, type CatalogEntry } from './library'
+import { createLibrary, type CatalogAction, type CatalogEntry } from './library'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -48,29 +47,32 @@ interface Actions {
   planetCameraKey: (key: string) => boolean
   escapeExplorer: () => boolean
   navigate: (view: 'simulation' | 'library') => void
-  openCatalogEntry: (entry: CatalogEntry, explore: boolean) => void
+  openCatalogEntry: (entry: CatalogEntry, action: CatalogAction) => void
+  openReference: (id: string) => void
+  closeReference: () => void
 }
 
-function planetReference(profile: ExplorerProfile, name: string) {
+function referenceContent({ profile }: CatalogEntry) {
   const links = (items: readonly (readonly [string, string])[]) =>
     items.map(([label, url]) => '<li><a href="' + (/^https?:/.test(url) ? url : import.meta.env.BASE_URL + url) + '" target="_blank" rel="noopener noreferrer">' + label + '</a></li>').join('')
+  const section = (title: string, description?: string) =>
+    description ? `<details><summary>${title}</summary><p>${description}</p></details>` : ''
+  const sources = [...profile.references, ...(profile.imagery ?? [])]
   return `
-      <div class="planet-panel-heading">
-        <h2 id="planet-panel-title">О планете ${name}</h2>
-        <button class="planet-action planet-close" type="button" id="planet-close" aria-label="Закрыть справку">${icon('close', 18)}</button>
-      </div>
       <details open><summary>Обзор</summary><p>${profile.overview}</p></details>
-      <details><summary>Физические характеристики</summary>
+      <details><summary>Характеристики</summary>
         <dl class="planet-values">${profile.properties.map(([label, value]) =>
           '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>').join('')}</dl>
       </details>
-      <details><summary>Поверхность</summary><p>${profile.surface}</p></details>
-      <details><summary>Атмосфера</summary><p>${profile.atmosphere}</p></details>
-      <details><summary>Внутреннее строение</summary><p>${profile.interior}</p></details>
-      <details><summary>Интересный факт</summary><p>${profile.fact}</p></details>
-      <details><summary>История исследований</summary><dl class="planet-history">${profile.history.map(([date, description]) =>
+      ${section(profile.surfaceTitle ?? 'Поверхность', profile.surface)}
+      ${section(profile.atmosphereTitle ?? 'Атмосфера', profile.atmosphere)}
+      ${section(profile.interiorTitle ?? 'Внутреннее строение', profile.interior)}
+      ${section('Естественные спутники', profile.moons)}
+      ${section('Интересный факт', profile.fact)}
+      ${profile.history?.length ? `<details><summary>История исследований</summary><dl class="planet-history">${profile.history.map(([date, description]) =>
         '<div><dt>' + date + '</dt><dd>' + description + '</dd></div>').join('')}</dl></details>
-      <details><summary>Источники и изображения</summary><ul>${links(profile.references)}${links(profile.imagery)}</ul></details>
+      ` : ''}
+      ${sources.length ? `<details><summary>Источники и изображения</summary><ul>${links(sources)}</ul></details>` : ''}
     `
 }
 
@@ -82,7 +84,7 @@ const scientific = (value: number) => scientificFormat.format(value).replace('E'
 const magnitude = (v: number[]) => Math.hypot(v[0], v[1], v[2])
 const coordinate = (value: number) => precise.format(Math.abs(value) < 0.0005 ? 0 : value)
 
-export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Actions) {
+export function createUI(root: HTMLElement, scenarios: Scenario[], entries: CatalogEntry[], actions: Actions) {
   const scenarioIcons: Icon[] = ['sun', 'binary', 'sandbox']
   root.innerHTML = `
     <a class="skip-link" id="skip-region" href="#body-selector">Перейти к выбору небесных тел</a>
@@ -137,7 +139,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
           <div class="planet-toolbar" id="planet-toolbar" hidden>
             <div class="planet-toolbar-actions">
               <button class="planet-action" type="button" id="planet-back">${icon('back', 16)} <span id="planet-back-label">К системе</span></button>
-              <button class="planet-action" type="button" id="planet-info-toggle" aria-controls="planet-panel" aria-expanded="false" hidden>${icon('info', 16)} Справка о планете</button>
+              <button class="planet-action" type="button" id="planet-info-toggle" aria-controls="planet-panel" aria-expanded="false" hidden>${icon('info', 16)} Справка</button>
             </div>
             <h2 id="planet-view-title">Исследование планеты</h2>
             <p class="planet-key-help" id="planet-key-help" hidden><kbd>↑ ↓ ← →</kbd> Вращение <span aria-hidden="true">·</span> <kbd>+ / = / −</kbd> Масштаб</p>
@@ -167,7 +169,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
             </div>
             <div class="object-actions">
               <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Навести камеру</button>
-              <button type="button" class="focus-button explore-planet" id="explore-planet" hidden>${icon('orbit', 17)} <span id="explore-planet-label">Исследовать</span></button>
+              <button type="button" class="focus-button explore-planet" id="explore-planet" hidden>${icon('orbit', 17)} <span id="explore-planet-label">Открыть глобус</span></button>
+              <button type="button" class="planet-action" id="object-reference">${icon('info', 16)} Справка</button>
             </div>
             <p class="planet-entry-error" id="planet-entry-error" role="status" hidden></p>
           </div>
@@ -192,6 +195,16 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       </main>
 
       <main class="library" id="library" aria-labelledby="library-title" hidden></main>
+      <main class="library" id="object-explorer" aria-labelledby="object-explorer-title" hidden>
+        <article class="library-content object-explorer-content">
+          <button class="planet-action" type="button" id="reference-back">${icon('back', 16)} <span id="reference-back-label"></span></button>
+          <header class="library-heading">
+            <h2 id="object-explorer-title" tabindex="-1"></h2>
+            <p id="object-explorer-classification"></p>
+          </header>
+          <div class="reference-sections" id="object-explorer-sections"></div>
+        </article>
+      </main>
 
       <footer class="body-selector" id="body-selector" aria-label="Небесные тела"></footer>
     </div>`
@@ -208,6 +221,11 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   const navSimulation = node<HTMLButtonElement>('nav-simulation')
   const navLibrary = node<HTMLButtonElement>('nav-library')
   const libraryElement = node('library')
+  const referenceElement = node('object-explorer')
+  const referenceTitle = node('object-explorer-title')
+  const referenceClassification = node('object-explorer-classification')
+  const referenceSections = node('object-explorer-sections')
+  const referenceBackLabel = node('reference-back-label')
   const skip = node<HTMLAnchorElement>('skip-region')
   const labels = node('viewport-labels')
   const error = node('scene-error')
@@ -252,15 +270,15 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   let explorerError = ''
   let selectedSpec: ObjectSpec | undefined
   let libraryOpen = false
-  const library = createLibrary(libraryElement, catalogEntries(scenarios), actions.openCatalogEntry, signal)
+  const entriesById = new Map(entries.map(entry => [entry.id, entry]))
+  const library = createLibrary(libraryElement, entries, actions.openCatalogEntry, signal)
   navSimulation.addEventListener('click', () => actions.navigate('simulation'), { signal })
   navLibrary.addEventListener('click', () => actions.navigate('library'), { signal })
 
   function updateExploreButton() {
-    const profile = explorerProfiles[selectedId]
-    explore.hidden = !profile || !selectedSpec?.detail?.surfaceMap || explorerState !== 'overview'
+    explore.hidden = !selectedSpec?.detail?.surfaceMap || explorerState !== 'overview'
     const canRetry = !explore.hidden && Boolean(explorerError)
-    exploreLabel.textContent = canRetry ? 'Повторить загрузку' : 'Исследовать'
+    exploreLabel.textContent = canRetry ? 'Повторить загрузку' : 'Открыть глобус'
     planetEntryError.textContent = canRetry ? explorerError : ''
     planetEntryError.hidden = !canRetry
   }
@@ -280,6 +298,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
   focus.addEventListener('click', actions.focus, { signal })
   overview.addEventListener('click', actions.overview, { signal })
   explore.addEventListener('click', () => actions.explore(selectedId), { signal })
+  node('object-reference').addEventListener('click', () => actions.openReference(selectedId), { signal })
+  node('reference-back').addEventListener('click', actions.closeReference, { signal })
   planetBack.addEventListener('click', () => {
     if (explorerState !== 'exiting') actions.exitExplorer()
   }, { signal })
@@ -304,13 +324,15 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     }
     if (event.target instanceof Element
       && event.target.closest('button, input, textarea, select, a, summary, [contenteditable]')) return
-    if (event.code === 'KeyH' && !libraryOpen) actions.overview()
+    if (event.code === 'KeyH' && !libraryOpen && referenceElement.hidden) actions.overview()
   }, { signal })
 
   return {
     viewport, labels,
     navigate(view: 'simulation' | 'library', focusTarget?: 'navigation' | 'restore' | 'scene') {
+      if (libraryOpen && view !== 'library') library.remember()
       libraryOpen = view === 'library'
+      referenceElement.hidden = true
       root.dataset.view = view
       workspace.hidden = bodySelector.hidden = libraryOpen
       libraryElement.hidden = !libraryOpen
@@ -326,6 +348,26 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
         viewport.focus({ preventScroll: true })
         viewport.scrollIntoView({ block: 'nearest' })
       }
+    },
+    reference(entry: CatalogEntry, fromLibrary: boolean) {
+      if (fromLibrary) library.remember()
+      libraryOpen = false
+      root.dataset.view = 'reference'
+      workspace.hidden = bodySelector.hidden = libraryElement.hidden = true
+      referenceElement.hidden = false
+      referenceElement.scrollTop = 0
+      navLibrary.removeAttribute('aria-current')
+      navSimulation.removeAttribute('aria-current')
+      referenceTitle.textContent = entry.name
+      const english = document.createElement('span')
+      english.lang = 'en'
+      english.textContent = entry.englishName
+      referenceClassification.replaceChildren(english, ' · ' + (entry.category === 'model' ? 'Учебная модель · ' : '') + entry.classification)
+      referenceSections.innerHTML = referenceContent(entry)
+      referenceBackLabel.textContent = fromLibrary ? 'К библиотеке' : 'К системе'
+      skip.href = '#object-explorer-title'
+      skip.textContent = 'Перейти к справке'
+      referenceTitle.focus({ preventScroll: true })
     },
     libraryError: library.error,
     scenario(scenario: Scenario) {
@@ -347,8 +389,12 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
     selected(spec: ObjectSpec) {
       selectedId = spec.id
       selectedSpec = spec
-      const information = explorerProfiles[spec.id]
-      planetPanel.innerHTML = information ? planetReference(information, spec.profile.name) : ''
+      const entry = entriesById.get(spec.id)
+      planetPanel.innerHTML = entry ? `
+        <div class="planet-panel-heading">
+          <h2 id="planet-panel-title">${entry.name}</h2>
+          <button class="planet-action planet-close" type="button" id="planet-close" aria-label="Закрыть справку">${icon('close', 18)}</button>
+        </div>${referenceContent(entry)}` : ''
       updateExploreButton()
       for (const button of bodySelector.querySelectorAll<HTMLButtonElement>('[data-body]')) {
         button.setAttribute('aria-pressed', String(button.dataset.body === spec.id))
@@ -357,8 +403,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], actions: Acti
       objectType.textContent = profile.classification
       objectName.textContent = profile.name
       inspectLabel.textContent = 'Сведения: ' + profile.name
-      profileOverview.textContent = profile.overview ?? ''
-      profileOverview.hidden = !profile.overview
+      profileOverview.textContent = entry?.profile.overview ?? profile.overview ?? ''
+      profileOverview.hidden = !profileOverview.textContent
       emblem.dataset.kind = spec.appearance.kind
       emblem.style.setProperty('--body-color', spec.appearance.color)
       emblem.style.setProperty('--body-dark', spec.appearance.dark)

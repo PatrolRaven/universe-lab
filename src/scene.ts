@@ -142,21 +142,27 @@ export class SpaceScene {
     })
 
     const { signal } = this.lifecycle
-    let pressed = false
-    let activePointers = 0
+    let pickPointer: number | undefined
+    const activePointers = new Set<number>()
     canvas.addEventListener('pointerdown', event => {
-      activePointers++
-      pressed = activePointers === 1 && event.button === 0
-      this.down.set(event.clientX, event.clientY)
+      activePointers.add(event.pointerId)
+      pickPointer = activePointers.size === 1 && event.button === 0 ? event.pointerId : undefined
+      if (pickPointer !== undefined) this.down.set(event.clientX, event.clientY)
     }, { signal })
-    canvas.addEventListener('pointercancel', () => {
-      activePointers = Math.max(0, activePointers - 1)
-      pressed = false
+    canvas.addEventListener('pointermove', event => {
+      if (event.pointerId === pickPointer && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) > 5) {
+        pickPointer = undefined
+      }
     }, { signal })
+    const clearPointer = (event: PointerEvent) => {
+      activePointers.delete(event.pointerId)
+      if (pickPointer === event.pointerId) pickPointer = undefined
+    }
+    canvas.addEventListener('pointercancel', clearPointer, { signal })
+    canvas.addEventListener('lostpointercapture', clearPointer, { signal })
     canvas.addEventListener('pointerup', event => {
-      activePointers = Math.max(0, activePointers - 1)
-      const pick = pressed && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) <= 5
-      pressed = false
+      const pick = event.pointerId === pickPointer && this.down.distanceTo(this.pointer.set(event.clientX, event.clientY)) <= 5
+      clearPointer(event)
       if (!pick || this.planetSession) return
       const rect = canvas.getBoundingClientRect()
       this.pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2)
@@ -238,7 +244,8 @@ export class SpaceScene {
   private loadSolarMaps() {
     for (const visual of this.visuals) {
       const { id } = visual.spec
-      if (id === 'sun' || !Object.hasOwn(solarRadius, id)) continue
+      const file = visual.spec.appearance.thumbnail
+      if (!file) continue
       const install = (target: Visual, texture: THREE.Texture) => {
         target.surface.material.uniforms.surfaceMap.value = texture
         target.surface.material.uniforms.mapped.value = true
@@ -251,7 +258,7 @@ export class SpaceScene {
       }
       if (this.loadingMaps.has(id)) continue
       this.loadingMaps.add(id)
-      this.textureLoader.load(import.meta.env.BASE_URL + 'planets/' + id + '.webp', texture => {
+      this.textureLoader.load(import.meta.env.BASE_URL + file, texture => {
         this.loadingMaps.delete(id)
         if (this.lifecycle.signal.aborted) {
           texture.dispose()
@@ -550,6 +557,7 @@ export class SpaceScene {
     if (width === 0 || height === 0) return
     this.dirty = true
     const previousOverview = this.overviewDistance()
+    const previousAspect = this.camera.aspect
     this.width = width
     this.height = height
     const ratio = Math.min(window.devicePixelRatio || 1, 1.65)
@@ -559,7 +567,10 @@ export class SpaceScene {
     this.camera.aspect = this.width / this.height
     this.camera.updateProjectionMatrix()
     if (this.planetSession?.state === 'exploring') {
-      this.controls.maxDistance = Math.max(1.75, this.planetSession.planet.radius * 3.5 / Math.min(1, this.camera.aspect))
+      const aspect = Math.min(1, this.camera.aspect)
+      this.controls.maxDistance = Math.max(1.75, this.planetSession.planet.radius * 3.5 / aspect)
+      this.camera.position.sub(this.controls.target)
+        .multiplyScalar(Math.min(1, previousAspect) / aspect).add(this.controls.target)
       return
     }
     if (this.planetSession) return
