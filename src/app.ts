@@ -104,14 +104,14 @@ function openCatalogEntry(entry: CatalogEntry, action: CatalogAction) {
   const target = entry.scene
   if (!target) return
   if (!scene) {
-    ui.libraryError('Для 3D-сцены нужен WebGL 2. Справка об объекте доступна в карточке.')
+    ui.libraryError('Для 3D-сцены нужен WebGL 2. Статья об объекте доступна.')
     return
   }
   if (action === 'globe') libraryLaunch = { scenario, simulation, selectedId: scenario.objects[selected].id }
   ui.libraryError('')
   navigate('simulation', 'scene')
   if (target.scenario !== scenario) load(target.scenario)
-  select(target.body.id)
+  select(target.body.id, action === 'show')
   if (action === 'globe') scene.explorePlanet(target.body.id)
   else scene.focus(target.body.id)
 }
@@ -135,7 +135,7 @@ function updateExplorer(state: ExplorerState, quality: ExplorerQuality, error?: 
     const previous = libraryLaunch
     libraryLaunch = undefined
     if (previous.scenario !== scenario) load(previous.scenario, previous.simulation)
-    select(previous.selectedId)
+    select(previous.selectedId, false)
     navigate('library', 'restore')
     ui.libraryError(error ?? '', Boolean(error))
   }
@@ -145,12 +145,12 @@ function updateReadings() {
   ui.readings(simulation.bodies[selected])
 }
 
-function select(id: string) {
+function select(id: string, reveal = true) {
   const index = scenario.objects.findIndex(body => body.id === id)
   if (index < 0) return
   if (explorerState !== 'overview') return
   selected = index
-  ui.selected(scenario.objects[index])
+  ui.selected(scenario.objects[index], reveal)
   scene?.select(id)
   updateReadings()
 }
@@ -160,7 +160,7 @@ function load(next: Scenario, state = new Simulation(next.objects)) {
   simulation = state
   ui.scenario(scenario)
   scene?.load(scenario, simulation)
-  select(scenario.selection)
+  select(scenario.selection, false)
   clock.rebase(performance.now())
 }
 

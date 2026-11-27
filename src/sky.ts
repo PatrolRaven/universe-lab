@@ -70,10 +70,10 @@ export function addSky(scene: THREE.Scene, onReady: () => void) {
           vec3 photo = texture2D(nebula, vec2(.938 - sampleUv.x, sampleUv.y)).rgb;
           float luma = dot(photo, vec3(.2126,.7152,.0722));
           float violet = smoothstep(-.26,.36,sin(longitude));
-          vec3 tint = mix(vec3(.30,.59,1.05), vec3(.80,.50,.98), violet);
+          vec3 tint = mix(vec3(.46,.64,.89), vec3(.66,.57,.82), violet);
           vec3 starlight = pow(mix(vec3(luma), photo, .55), vec3(1.12));
           float arm = exp(-latitude * latitude * 24.);
-          col += (starlight * tint * .86 + vec3(.014,.027,.067) * arm) * effects;
+          col += (starlight * tint * .70 + vec3(.012,.022,.049) * arm) * effects;
         }
         gl_FragColor = vec4(col, 1.);
       }`,

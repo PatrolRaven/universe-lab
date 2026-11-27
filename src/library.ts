@@ -1,6 +1,8 @@
 import type { ObjectSpec, Scenario } from './data'
 import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
 import { solarCatalog } from './solar-catalog'
+import { articleContent, handleMediaError } from './reference-view'
+import './encyclopedia.css'
 
 export const categoryNames = {
   planet: 'Планеты',
@@ -93,95 +95,164 @@ function normalize(text: string) {
 export type CatalogAction = 'reference' | 'globe' | 'show'
 
 export function createLibrary(element: HTMLElement, entries: CatalogEntry[], open: (entry: CatalogEntry, action: CatalogAction) => void, signal: AbortSignal) {
-  const kinds = new Set(entries.map(entry => entry.category))
+  const kinds = (Object.keys(categoryNames) as CatalogEntry['category'][])
+    .filter(kind => entries.some(entry => entry.category === kind))
+  const narrow = matchMedia('(max-width: 700px)')
+  element.dataset.libraryPane = 'article'
   element.innerHTML = `
-    <div class="library-content">
-      <header class="library-heading">
-        <h2 id="library-title" tabindex="-1">Библиотека небесных тел</h2>
-      </header>
-      <div class="library-filters">
-        <label>Поиск по библиотеке<input type="search" id="library-search" placeholder="Например, Марс" autocomplete="off"></label>
-        <label>Категория<select id="library-category">
-          <option value="all">Все категории</option>
-          ${[...kinds].map(kind => `<option value="${kind}">${categoryNames[kind]}</option>`).join('')}
-        </select></label>
+    <div class="encyclopedia">
+      <aside class="encyclopedia-index" aria-labelledby="library-title">
+        <div class="encyclopedia-search">
+          <h2 id="library-title" tabindex="-1">Библиотека</h2>
+          <label>Поиск<input type="search" id="library-search" placeholder="Например, Марс или Mars" autocomplete="off"></label>
+          <label>Категория<select id="library-category">
+            <option value="all">Все категории</option>
+            ${kinds.map(kind => `<option value="${kind}">${categoryNames[kind]}</option>`).join('')}
+          </select></label>
+          <p id="library-results" aria-live="polite"></p>
+          <button class="planet-action" type="button" data-library-reset hidden>Сбросить фильтры</button>
+        </div>
+        <div class="encyclopedia-index-list">
+          ${kinds.map(kind => `<section data-entry-group="${kind}" aria-labelledby="entry-group-${kind}">
+            <h3 id="entry-group-${kind}">${categoryNames[kind]}</h3>
+            <ul>${entries.filter(entry => entry.category === kind).map(({ id, name }) =>
+              `<li data-entry="${id}"><button type="button" data-library-select="${id}">${name}</button></li>`).join('')}</ul>
+          </section>`).join('')}
+        </div>
+      </aside>
+      <div class="encyclopedia-reading">
+        <button class="planet-action encyclopedia-list-back" type="button" data-library-list>К списку объектов</button>
+        <article class="encyclopedia-entry"></article>
+        <p id="library-error" role="status" hidden></p>
       </div>
-      <div id="library-results" class="library-results" aria-live="polite"></div>
-      <p id="library-error" role="status" hidden></p>
-      <ul class="library-list" aria-label="Небесные тела">
-        ${entries.map(({ id, name, englishName, category, classification, image, profile, scene }) => `<li class="library-item" data-entry="${id}">
-          ${image ? `<div class="library-map"><img src="${import.meta.env.BASE_URL + image}" alt="" loading="lazy" width="1024" height="512"></div>` : ''}
-          <div class="library-copy">
-            <h3>${name}</h3>
-            <p class="library-classification"><span lang="en">${englishName}</span> · ${category === 'model' ? 'Учебная модель · ' : ''}${classification}</p>
-            <p>${profile.overview}</p>
-            <dl class="planet-values library-values">${profile.properties.slice(0, 3).map(([label, value]) =>
-              `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('')}</dl>
-            <div class="library-actions">
-              <button type="button" class="focus-button" data-library-action="reference" aria-label="Открыть справку: ${name}">Справка</button>
-              ${scene?.body.detail?.surfaceMap ? `<button type="button" class="planet-action" data-library-action="globe" aria-label="Открыть глобус: ${name}">Открыть глобус</button>` : ''}
-              ${scene ? `<button type="button" class="planet-action" data-library-action="show" aria-label="Показать в системе: ${name}">Показать в системе</button>` : ''}
-            </div>
-          </div>
-        </li>`).join('')}
-      </ul>
     </div>`
 
   const search = element.querySelector<HTMLInputElement>('#library-search')!
   const category = element.querySelector<HTMLSelectElement>('#library-category')!
   const results = element.querySelector<HTMLElement>('#library-results')!
   const error = element.querySelector<HTMLElement>('#library-error')!
-  const items = element.querySelectorAll<HTMLElement>('[data-entry]')
+  const reset = element.querySelector<HTMLButtonElement>('[data-library-reset]')!
+  const index = element.querySelector<HTMLElement>('.encyclopedia-index-list')!
+  const reading = element.querySelector<HTMLElement>('.encyclopedia-reading')!
+  const article = element.querySelector<HTMLElement>('.encyclopedia-entry')!
+  const groups = index.querySelectorAll<HTMLElement>('[data-entry-group]')
+  const items = index.querySelectorAll<HTMLElement>('[data-entry]')
+  let selected = entries.find(entry => entry.id === 'earth') ?? entries[0]
+  let renderedId: string | undefined
   let trigger: HTMLButtonElement | undefined
-  let scrollTop = 0
+  let indexScroll = 0
+  let articleScroll = 0
   let failedGlobe: HTMLButtonElement | undefined
 
+  function renderArticle() {
+    if (element.hidden || (narrow.matches && element.dataset.libraryPane === 'index')) return
+    const id = selected?.id ?? ''
+    if (id === renderedId) return
+    renderedId = id
+    article.innerHTML = selected
+      ? articleContent(selected, { actions: true, titleId: 'library-object-title' })
+      : '<div class="encyclopedia-empty"><h2 id="library-object-title" tabindex="-1">Объекты не найдены</h2><p>Измените запрос или выберите другую категорию.</p></div>'
+    article.setAttribute('aria-labelledby', 'library-object-title')
+    reading.scrollTop = 0
+  }
+
+  function markSelection() {
+    for (const item of items) {
+      const button = item.querySelector('button')!
+      if (item.dataset.entry === selected?.id) button.setAttribute('aria-current', 'true')
+      else button.removeAttribute('aria-current')
+    }
+  }
+
   function filter() {
-    if (!error.hidden) clearError()
-    const matches = new Set(filterCatalog(entries, search.value, category.value).map(entry => entry.id))
-    for (const item of items) item.hidden = !matches.has(item.dataset.entry!)
-    results.textContent = matches.size ? `Найдено объектов: ${matches.size}` : 'Ничего не найдено. Измените запрос или категорию.'
+    clearError()
+    const matches = filterCatalog(entries, search.value, category.value)
+    const visible = new Set(matches.map(entry => entry.id))
+    for (const item of items) item.hidden = !visible.has(item.dataset.entry!)
+    for (const group of groups) group.hidden = !group.querySelector('[data-entry]:not([hidden])')
+    if (!selected || !visible.has(selected.id)) selected = matches[0]
+    markSelection()
+    reset.hidden = matches.length > 0
+    results.textContent = matches.length
+      ? `Найдено объектов: ${matches.length}`
+      : 'Найдено объектов: 0. Измените запрос или категорию.'
+    renderArticle()
   }
 
   function clearError() {
-    if (failedGlobe) {
-      failedGlobe.textContent = 'Открыть глобус'
-      failedGlobe.setAttribute('aria-label', failedGlobe.getAttribute('aria-label')!.replace('Повторить загрузку глобуса', 'Открыть глобус'))
-    }
+    if (failedGlobe) failedGlobe.textContent = 'Открыть глобус'
     failedGlobe = undefined
     error.textContent = ''
     error.hidden = true
   }
   search.addEventListener('input', filter, { signal })
   category.addEventListener('change', filter, { signal })
+  narrow.addEventListener('change', renderArticle, { signal })
+  element.addEventListener('error', handleMediaError, { capture: true, signal })
+  reset.addEventListener('click', () => {
+    search.value = ''
+    category.value = 'all'
+    filter()
+    search.focus()
+  }, { signal })
   element.addEventListener('click', event => {
-    const button = (event.target as Element).closest<HTMLButtonElement>('[data-library-action]')
-    if (!button) return
-    const entry = entries.find(item => item.id === button.closest<HTMLElement>('[data-entry]')?.dataset.entry)
-    if (!entry) return
+    if (!(event.target instanceof Element)) return
+    if (event.target.closest('[data-library-list]')) {
+      articleScroll = reading.scrollTop
+      element.dataset.libraryPane = 'index'
+      index.scrollTop = indexScroll
+      const current = index.querySelector<HTMLButtonElement>('[aria-current="true"]')
+      if (current) current.focus({ preventScroll: true })
+      else search.focus({ preventScroll: true })
+      return
+    }
+    const choice = event.target.closest<HTMLButtonElement>('[data-library-select]')
+    if (choice) {
+      const entry = entries.find(item => item.id === choice.dataset.librarySelect)
+      if (!entry) return
+      const sameEntry = renderedId === entry.id
+      clearError()
+      selected = entry
+      markSelection()
+      indexScroll = index.scrollTop
+      element.dataset.libraryPane = 'article'
+      renderArticle()
+      if (narrow.matches) {
+        reading.scrollTop = sameEntry ? articleScroll : 0
+        article.querySelector<HTMLElement>('h2')?.focus({ preventScroll: true })
+      }
+      return
+    }
+    const button = event.target.closest<HTMLButtonElement>('[data-library-action]')
+    if (!button || !selected) return
     trigger = button
-    open(entry, button.dataset.libraryAction as CatalogAction)
+    open(selected, button.dataset.libraryAction as CatalogAction)
   }, { signal })
   filter()
 
   return {
-    remember() { scrollTop = element.scrollTop },
+    remember() {
+      if (index.clientHeight > 0) indexScroll = index.scrollTop
+      if (reading.clientHeight > 0) articleScroll = reading.scrollTop
+    },
     focus(restore: boolean) {
-      element.scrollTop = scrollTop
-      if (restore && trigger && !trigger.closest('[hidden]')) trigger.focus({ preventScroll: true })
-      else element.querySelector<HTMLElement>('#library-title')!.focus({ preventScroll: true })
+      renderArticle()
+      index.scrollTop = indexScroll
+      reading.scrollTop = articleScroll
+      if (restore && trigger?.isConnected) trigger.focus({ preventScroll: true })
+      else {
+        const target = narrow.matches && element.dataset.libraryPane === 'article' ? '#library-object-title' : '#library-title'
+        element.querySelector<HTMLElement>(target)?.focus({ preventScroll: true })
+      }
     },
     error(message: string, retry = false) {
       clearError()
       if (!message) return
-      const actions = trigger?.closest('.library-actions')
-      if (actions) actions.before(error)
-      else results.after(error)
+      const actions = trigger?.isConnected && trigger.closest('.encyclopedia-actions')
+      if (actions) actions.after(error)
+      else reading.prepend(error)
       failedGlobe = retry && trigger?.dataset.libraryAction === 'globe' ? trigger : undefined
-      if (failedGlobe) {
-        failedGlobe.textContent = 'Повторить загрузку глобуса'
-        failedGlobe.setAttribute('aria-label', failedGlobe.getAttribute('aria-label')!.replace('Открыть глобус', 'Повторить загрузку глобуса'))
-      }
+      if (failedGlobe) failedGlobe.textContent = 'Повторить загрузку глобуса'
       error.textContent = message
       error.hidden = false
     },

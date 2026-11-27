@@ -3,6 +3,7 @@ import type { Body } from './physics'
 import type { Layers } from './scene'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
 import { createLibrary, type CatalogAction, type CatalogEntry } from './library'
+import { articleContent, handleMediaError, objectFigure } from './reference-view'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -106,7 +107,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       </header>
 
       <main class="workspace" id="workspace" aria-label="Орбитальная симуляция">
-        <aside class="catalog" aria-label="Сценарии и слои">
+        <button type="button" class="planet-action scene-settings" id="scene-settings" aria-controls="scene-catalog" aria-expanded="true">${icon('orbit', 16)} Сценарии и слои</button>
+        <aside class="catalog" id="scene-catalog" aria-label="Сценарии и слои">
           <section class="scenario-section">
             <h2 class="section-label">Сценарии</h2>
             <div class="scenario-list">${scenarios.map((scenario, i) => `
@@ -132,9 +134,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
 
         <section id="viewport" class="viewport" aria-labelledby="view-title" tabindex="-1">
           <div class="viewport-labels" id="viewport-labels"></div>
-          <div class="view-header" data-enter>
+          <div class="view-header">
             <h2 id="view-title"></h2>
-            <p id="view-description"></p>
           </div>
           <div class="planet-toolbar" id="planet-toolbar" hidden>
             <div class="planet-toolbar-actions">
@@ -149,24 +150,26 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
           <div class="camera-tools">
             <button type="button" id="overview" class="overview" title="Вернуться к общему виду (H)" aria-label="Вернуться к общему виду">${icon('frame', 19)}</button>
           </div>
-          <div class="frame-marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
           <div class="view-footer">
             <div class="view-actions">
               <div class="view-help view-help-mouse">${icon('mouse', 14)} <span>Вращение</span><b>·</b><span>Колесо — масштаб</span><b>·</b><span>Правая кнопка — панорама</span></div>
               <div class="view-help view-help-touch"><span>Вращение</span><b>·</b><span>Сведение пальцев — масштаб</span></div>
-              <a class="inspect-link" href="#inspector">${icon('info', 14)}<span id="inspect-label"></span>${icon('arrow', 12)}</a>
+              <button type="button" class="inspect-link" id="inspect-open" aria-controls="inspector" aria-expanded="false">${icon('info', 14)}<span id="inspect-label"></span></button>
             </div>
             <div class="view-axis" aria-hidden="true"><span></span><span></span><span></span><i>X</i><i>Y</i><i>Z</i></div>
           </div>
           <div class="scene-error" id="scene-error" role="status" hidden></div>
         </section>
 
-        <aside class="inspector" id="inspector" aria-label="Выбранное тело" tabindex="-1">
+        <aside class="inspector" id="inspector" aria-labelledby="object-name" tabindex="-1">
+          <button type="button" class="planet-action inspector-close" id="inspect-close" aria-label="Закрыть сведения">${icon('close', 18)}</button>
+          <div class="inspector-media" id="inspector-media"></div>
           <div class="object-card">
             <div class="object-heading" id="object-heading">
-              <div class="object-emblem" id="object-emblem" aria-hidden="true"><i></i></div>
               <div><p class="object-type" id="object-type"></p><h3 id="object-name"></h3></div>
             </div>
+            <p id="profile-overview" class="profile-overview" hidden></p>
+            <dl id="object-key-values" class="properties"></dl>
             <div class="object-actions">
               <button type="button" class="focus-button" id="focus">${icon('focus', 16)} Навести камеру</button>
               <button type="button" class="focus-button explore-planet" id="explore-planet" hidden>${icon('orbit', 17)} <span id="explore-planet-label">Открыть глобус</span></button>
@@ -175,8 +178,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
             <p class="planet-entry-error" id="planet-entry-error" role="status" hidden></p>
           </div>
           <details class="statistics">
-            <summary class="section-label">Физические характеристики</summary>
-            <p id="profile-overview" class="profile-overview" hidden></p>
+            <summary class="section-label">Показания симуляции</summary>
             <dl class="properties">
               <div><dt>Масса</dt><dd><span id="mass"></span> <small>M☉</small></dd></div>
               <div><dt>Радиус</dt><dd><span id="radius"></span> <small>км</small></dd></div>
@@ -194,16 +196,12 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
         <aside class="planet-panel" id="planet-panel" aria-labelledby="planet-panel-title" hidden></aside>
       </main>
 
-      <main class="library" id="library" aria-labelledby="library-title" hidden></main>
+      <main class="library" id="library" aria-labelledby="library-title" tabindex="-1" hidden></main>
       <main class="library" id="object-explorer" aria-labelledby="object-explorer-title" hidden>
-        <article class="library-content object-explorer-content">
+        <div class="object-explorer-content">
           <button class="planet-action" type="button" id="reference-back">${icon('back', 16)} <span id="reference-back-label"></span></button>
-          <header class="library-heading">
-            <h2 id="object-explorer-title" tabindex="-1"></h2>
-            <p id="object-explorer-classification"></p>
-          </header>
-          <div class="reference-sections" id="object-explorer-sections"></div>
-        </article>
+          <div id="object-explorer-sections"></div>
+        </div>
       </main>
 
       <footer class="body-selector" id="body-selector" aria-label="Небесные тела"></footer>
@@ -222,8 +220,6 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   const navLibrary = node<HTMLButtonElement>('nav-library')
   const libraryElement = node('library')
   const referenceElement = node('object-explorer')
-  const referenceTitle = node('object-explorer-title')
-  const referenceClassification = node('object-explorer-classification')
   const referenceSections = node('object-explorer-sections')
   const referenceBackLabel = node('reference-back-label')
   const skip = node<HTMLAnchorElement>('skip-region')
@@ -232,12 +228,17 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   const bodySelector = node('body-selector')
   const topSystem = node('top-system')
   const viewTitle = node('view-title')
-  const description = node('view-description')
   const objectType = node('object-type')
   const objectName = node('object-name')
   const profileOverview = node('profile-overview')
   const inspectLabel = node('inspect-label')
-  const emblem = node('object-emblem')
+  const inspector = node('inspector')
+  const inspectorMedia = node('inspector-media')
+  const objectValues = node('object-key-values')
+  const inspectOpen = node('inspect-open')
+  const inspectClose = node('inspect-close')
+  const settings = node('scene-settings')
+  const sceneCatalog = node('scene-catalog')
   const mass = node('mass')
   const radius = node('radius')
   const speed = node('speed')
@@ -265,6 +266,11 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
 
   const lifecycle = new AbortController()
   const { signal } = lifecycle
+  root.addEventListener('error', handleMediaError, { capture: true, signal })
+  root.dataset.planetState = 'overview'
+  root.dataset.view = 'simulation'
+  const compact = matchMedia('(max-width: 720px)')
+  let displayedMedia = ''
   let explorerState: ExplorerState = 'overview'
   let selectedId = ''
   let explorerError = ''
@@ -274,6 +280,42 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   const library = createLibrary(libraryElement, entries, actions.openCatalogEntry, signal)
   navSimulation.addEventListener('click', () => actions.navigate('simulation'), { signal })
   navLibrary.addEventListener('click', () => actions.navigate('library'), { signal })
+
+  function showSettings(open: boolean) {
+    sceneCatalog.hidden = !open
+    settings.setAttribute('aria-expanded', String(open))
+  }
+  function showInspector(open: boolean) {
+    inspector.hidden = !open
+    inspectOpen.setAttribute('aria-expanded', String(open))
+    if (open && selectedId && displayedMedia !== selectedId) {
+      const entry = entriesById.get(selectedId)
+      inspectorMedia.innerHTML = entry ? objectFigure(entry) : ''
+      displayedMedia = selectedId
+    }
+  }
+  showSettings(!compact.matches)
+  showInspector(!compact.matches)
+  settings.addEventListener('click', () => {
+    if (compact.matches && sceneCatalog.hidden) showInspector(false)
+    showSettings(sceneCatalog.hidden)
+  }, { signal })
+  inspectOpen.addEventListener('click', () => {
+    if (!inspector.hidden) {
+      showInspector(false)
+      return
+    }
+    if (compact.matches) showSettings(false)
+    showInspector(true)
+    inspectClose.focus({ preventScroll: true })
+  }, { signal })
+  inspectClose.addEventListener('click', () => {
+    showInspector(false)
+    inspectOpen.focus({ preventScroll: true })
+  }, { signal })
+  compact.addEventListener('change', event => {
+    if (event.matches && !inspector.hidden) showSettings(false)
+  }, { signal })
 
   function updateExploreButton() {
     explore.hidden = !selectedSpec?.detail?.surfaceMap || explorerState !== 'overview'
@@ -295,7 +337,10 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       actions.layers(layers)
     }, { signal })
   }
-  focus.addEventListener('click', actions.focus, { signal })
+  focus.addEventListener('click', () => {
+    if (compact.matches) showInspector(false)
+    actions.focus()
+  }, { signal })
   overview.addEventListener('click', actions.overview, { signal })
   explore.addEventListener('click', () => actions.explore(selectedId), { signal })
   node('object-reference').addEventListener('click', () => actions.openReference(selectedId), { signal })
@@ -340,7 +385,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       const other = libraryOpen ? navSimulation : navLibrary
       current.setAttribute('aria-current', 'page')
       other.removeAttribute('aria-current')
-      skip.href = libraryOpen ? '#library-title' : '#body-selector'
+      skip.href = libraryOpen ? '#library' : '#body-selector'
       skip.textContent = libraryOpen ? 'Перейти к библиотеке' : 'Перейти к выбору небесных тел'
       if (focusTarget && libraryOpen) library.focus(focusTarget === 'restore')
       else if (focusTarget === 'navigation') navSimulation.focus({ preventScroll: true })
@@ -358,24 +403,18 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       referenceElement.scrollTop = 0
       navLibrary.removeAttribute('aria-current')
       navSimulation.removeAttribute('aria-current')
-      referenceTitle.textContent = entry.name
-      const english = document.createElement('span')
-      english.lang = 'en'
-      english.textContent = entry.englishName
-      referenceClassification.replaceChildren(english, ' · ' + (entry.category === 'model' ? 'Учебная модель · ' : '') + entry.classification)
-      referenceSections.innerHTML = referenceContent(entry)
+      referenceSections.innerHTML = articleContent(entry, { titleId: 'object-explorer-title' })
       referenceBackLabel.textContent = fromLibrary ? 'К библиотеке' : 'К системе'
       skip.href = '#object-explorer-title'
       skip.textContent = 'Перейти к справке'
-      referenceTitle.focus({ preventScroll: true })
+      node('object-explorer-title').focus({ preventScroll: true })
     },
     libraryError: library.error,
     scenario(scenario: Scenario) {
       topSystem.textContent = scenario.name
       viewTitle.textContent = scenario.name
-      description.textContent = scenario.description
       for (const button of scenarioButtons) button.setAttribute('aria-pressed', String(button.dataset.scenario === scenario.id))
-      bodySelector.innerHTML = `<span class="body-selector-label">${scenario.objects.length} небесных тел</span>` + scenario.objects.map(spec => {
+      bodySelector.innerHTML = scenario.objects.map(spec => {
         const map = spec.detail?.surfaceMap?.url ?? spec.appearance.thumbnail
         const image = map
           ? `url('${new URL(map, new URL(import.meta.env.BASE_URL, location.href)).href}')`
@@ -386,7 +425,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
         </button>`
       }).join('')
     },
-    selected(spec: ObjectSpec) {
+    selected(spec: ObjectSpec, reveal: boolean) {
+      if (selectedId !== spec.id) explorerError = ''
       selectedId = spec.id
       selectedSpec = spec
       const entry = entriesById.get(spec.id)
@@ -402,13 +442,13 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       const { profile } = spec
       objectType.textContent = profile.classification
       objectName.textContent = profile.name
-      inspectLabel.textContent = 'Сведения: ' + profile.name
+      inspectLabel.textContent = profile.name
       profileOverview.textContent = entry?.profile.overview ?? profile.overview ?? ''
       profileOverview.hidden = !profileOverview.textContent
-      emblem.dataset.kind = spec.appearance.kind
-      emblem.style.setProperty('--body-color', spec.appearance.color)
-      emblem.style.setProperty('--body-dark', spec.appearance.dark)
-      emblem.style.setProperty('--body-accent', spec.appearance.accent)
+      objectValues.innerHTML = (entry?.profile.properties ?? []).slice(0, 3).map(([key, value]) =>
+        `<div><dt>${key}</dt><dd>${value}</dd></div>`).join('')
+      if (reveal && compact.matches) showSettings(false)
+      if (reveal || !inspector.hidden) showInspector(true)
       mass.textContent = scientific(spec.mass)
       radius.textContent = format.format(profile.radiusKm)
     },

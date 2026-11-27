@@ -81,7 +81,7 @@ export function surfaceMaterial(
             col = mix(col, accent, smoothstep(.55,.83,fine) * .34);
           }
           }
-          vec3 lighting = mapped ? vec3(.19,.22,.28) : vec3(.107,.119,.146);
+          vec3 lighting = mapped ? vec3(.14,.17,.23) : vec3(.095,.108,.137);
           if (mapped && style == 4) lighting += vec3(.08,.12,.20) * limb;
           float reflectance = 0.;
           for(int i=0; i<2; i++) {

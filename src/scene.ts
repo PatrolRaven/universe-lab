@@ -213,7 +213,7 @@ export class SpaceScene {
     const orbitGeometry = new THREE.BufferGeometry()
     orbitGeometry.setAttribute('position', new THREE.BufferAttribute(path, 3))
     const orbit = new THREE.Line(orbitGeometry, new THREE.LineBasicMaterial({
-      color: '#658bab', transparent: true, opacity: 0.33, depthWrite: false,
+      color: '#82adc8', transparent: true, opacity: 0.42, depthWrite: false,
     }))
     orbit.renderOrder = -1
 
@@ -224,7 +224,7 @@ export class SpaceScene {
     trailGeometry.setAttribute('position', history)
     trailGeometry.setDrawRange(0, 0)
     const trail = new THREE.Line(trailGeometry, new THREE.LineBasicMaterial({
-      color: appearance.color, transparent: true, opacity: 0.64, depthWrite: false,
+      color: appearance.color, transparent: true, opacity: 0.51, depthWrite: false,
     }))
     trail.frustumCulled = false
     trail.renderOrder = 1
