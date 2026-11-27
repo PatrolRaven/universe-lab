@@ -3,7 +3,7 @@ import { SimulationClock } from './clock'
 import { scenarios, type Scenario } from './data'
 import { Simulation } from './physics'
 import { SpaceScene } from './scene'
-import { createUI } from './ui'
+import { createUI, type LabView } from './ui'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
 import { catalogEntries, type CatalogAction, type CatalogEntry } from './library'
 
@@ -18,17 +18,29 @@ let explorerState: ExplorerState = 'overview'
 let explorerQuality: ExplorerQuality = 'unavailable'
 let explorerError: string | undefined
 let explorerPanel = false
-let view: 'simulation' | 'library' = 'simulation'
+let view: LabView = 'galaxy'
 let reference: { trigger: HTMLElement | null; scrollX: number; scrollY: number } | undefined
 let libraryLaunch: { scenario: Scenario; simulation: Simulation; selectedId: string } | undefined
+const visited = new Map<string, { simulation: Simulation; selectedId: string }>()
+let loaded = false
+let sceneFade: Animation | undefined
 let frame = 0
 
 const entries = catalogEntries(scenarios)
 const ui = createUI(document.querySelector('#app')!, scenarios, entries, {
   scenario: id => {
     const next = scenarios.find(item => item.id === id)
-    if (next && next !== scenario) load(next)
+    if (next && next !== scenario) openScenario(next)
   },
+  enterSystem: id => {
+    const next = scenarios.find(item => item.id === id)
+    if (!next || !scene) return
+    navigate('simulation', 'scene')
+    openScenario(next)
+  },
+  galaxyOverview: () => scene?.galaxyOverview(),
+  locateSun: () => scene?.locateSun(),
+  galaxyKey: (key, shift) => scene?.galaxyKey(key, shift) ?? false,
   select,
   focus: () => {
     if (!scene) return
@@ -71,9 +83,15 @@ function navigate(next: typeof view, focusTarget: 'navigation' | 'restore' | 'sc
     return
   }
   reference = undefined
+  const previous = view
   view = next
   ui.navigate(next, focusTarget)
-  if (next === 'simulation') scene?.resize()
+  sceneFade?.cancel()
+  scene?.setGalaxy(next === 'galaxy')
+  if (previous !== 'library' && next !== 'library' && !reducedMotion.matches) {
+    sceneFade = ui.viewport.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' })
+  }
+  clock.rebase(performance.now())
 }
 
 function openReference(entry: CatalogEntry) {
@@ -110,7 +128,7 @@ function openCatalogEntry(entry: CatalogEntry, action: CatalogAction) {
   if (action === 'globe') libraryLaunch = { scenario, simulation, selectedId: scenario.objects[selected].id }
   ui.libraryError('')
   navigate('simulation', 'scene')
-  if (target.scenario !== scenario) load(target.scenario)
+  openScenario(target.scenario)
   select(target.body.id, action === 'show')
   if (action === 'globe') scene.explorePlanet(target.body.id)
   else scene.focus(target.body.id)
@@ -156,26 +174,36 @@ function select(id: string, reveal = true) {
 }
 
 function load(next: Scenario, state = new Simulation(next.objects)) {
+  if (loaded) visited.set(scenario.id, { simulation, selectedId: scenario.objects[selected].id })
   scenario = next
   simulation = state
+  loaded = true
   ui.scenario(scenario)
   scene?.load(scenario, simulation)
   select(scenario.selection, false)
   clock.rebase(performance.now())
 }
 
+function openScenario(next: Scenario) {
+  if (loaded && next === scenario) return
+  const saved = visited.get(next.id)
+  load(next, saved?.simulation)
+  if (saved) select(saved.selectedId, false)
+}
+
+ui.navigate(view)
 try {
   scene = new SpaceScene(ui.viewport, ui.labels, select, () => {
     scene?.dispose()
     scene = undefined
     if (explorerState !== 'overview') updateExplorer('overview', 'unavailable')
     ui.sceneError('Графический контекст потерян. Перезагрузите страницу, чтобы восстановить 3D-сцену.')
-  }, updateExplorer)
+  }, updateExplorer, ui.galaxyMarker)
+  scene.setGalaxy(true)
 } catch (error) {
   if (!(error instanceof Error) || error.message !== 'WebGL 2 is unavailable') throw error
   ui.sceneError('Включите аппаратное ускорение или откройте лабораторию в браузере с поддержкой WebGL 2.')
 }
-load(scenario, simulation)
 
 function sampleTrails() {
   scene?.sampleTrails(simulation)
@@ -191,8 +219,10 @@ let lastReadings = 0
 function animate(now: number) {
   const cameraDelta = Math.min(Math.max(0, (now - previousFrame) / 1000), 0.06)
   previousFrame = now
-  advanceClock(now)
   const simulationVisible = view === 'simulation' && !reference
+  if (simulationVisible) advanceClock(now)
+  else clock.rebase(now)
+  if (view === 'galaxy') scene?.renderGalaxy()
   if (simulationVisible) scene?.render(simulation, cameraDelta)
   if (simulationVisible && now - lastReadings > 75) {
     updateReadings()
@@ -205,6 +235,7 @@ frame = requestAnimationFrame(animate)
 function dispose() {
   cancelAnimationFrame(frame)
   lifecycle.abort()
+  sceneFade?.cancel()
   scene?.dispose()
   ui.dispose()
 }
@@ -212,6 +243,7 @@ function dispose() {
 const { signal } = lifecycle
 reducedMotion.addEventListener('change', event => {
   clock.setReducedMotion(event.matches, performance.now())
+  if (event.matches) sceneFade?.cancel()
 }, { signal })
 document.addEventListener('visibilitychange', () => {
   clock.setVisible(!document.hidden, performance.now())

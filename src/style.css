@@ -578,6 +578,109 @@ svg { flex-shrink: 0; vertical-align: middle; }
   #app:has(.main-nav:not([hidden])) .top-system { display: none; }
 }
 
+#app[data-planet-state="overview"][data-view="galaxy"] .workspace {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr) 290px;
+  align-items: stretch;
+  padding: 0;
+}
+[data-view="galaxy"] :is(.scene-settings, .catalog, .inspector, .viewport-labels, .view-header, .camera-tools, .view-footer) {
+  display: none !important;
+}
+#galaxy-back { pointer-events: auto; min-height: 38px; margin-bottom: 7px; }
+#app[data-planet-state="overview"][data-view="simulation"] .scene-settings { top: 125px; }
+#app[data-planet-state="overview"][data-view="simulation"] .catalog { top: 176px; max-height: calc(100% - 194px); }
+
+.galaxy-panel {
+  grid-area: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 18px;
+  min-width: 0;
+  overflow: auto;
+  border-left: 1px solid var(--edge);
+  background: #0b1320;
+}
+.galaxy-panel h2 { margin-bottom: 10px; font: 600 23px/1.1 var(--display); }
+.galaxy-panel .scenario { width: 100%; }
+.galaxy-panel .scenario[aria-expanded="true"] { background: var(--selected); border-color: #346480; }
+.galaxy-solar { padding: 12px 2px 0; display: grid; gap: 12px; }
+.galaxy-solar p, .galaxy-sources { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.galaxy-solar strong { color: var(--accent-bright); }
+.galaxy-solar .focus-button { justify-content: space-between; min-height: 44px; }
+.galaxy-sources { border-top: 1px solid var(--edge); padding-top: 12px; }
+.galaxy-sources summary { color: var(--accent-bright); cursor: pointer; min-height: 34px; }
+.galaxy-sources ul { margin: 10px 0 0; padding-left: 17px; }
+.galaxy-sources a { color: var(--accent); text-underline-offset: 3px; }
+.galaxy-overlay { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.galaxy-heading { position: absolute; inset: 26px auto auto 28px; text-shadow: 0 2px 14px #000; }
+.galaxy-heading h2 { font: 600 clamp(34px, 4.4vw, 66px)/.98 var(--display); letter-spacing: -.025em; }
+.galaxy-heading p { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.galaxy-tools { position: absolute; inset: auto auto 46px 28px; display: flex; flex-wrap: wrap; gap: 6px; }
+.galaxy-tools button { pointer-events: auto; min-height: 44px; }
+.galaxy-key-help { position: absolute; inset: auto auto 19px 28px; color: var(--muted); font-size: 12px; text-shadow: 0 1px 5px #000; }
+.galaxy-marker {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+.galaxy-marker > span {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 1px solid #ffcf95;
+  border-radius: 50%;
+  background: #2e241c;
+  box-shadow: 0 0 12px #ffba6666;
+}
+.galaxy-marker > span::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ffe6c2; }
+.galaxy-marker strong {
+  position: absolute;
+  left: 37px;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: #0a1422ed;
+  border: 1px solid #56718b;
+  color: #f6f1e9;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.galaxy-marker.marker-left strong { left: auto; right: 37px; }
+.galaxy-marker:is(:hover, [aria-expanded="true"]) > span { background: #8a5628; }
+[data-view="galaxy"] .viewport:focus-visible { outline-offset: -2px; }
+
+@media (max-width: 850px) {
+  #app[data-planet-state="overview"][data-view="galaxy"] .laboratory { height: auto; }
+  #app[data-planet-state="overview"][data-view="galaxy"] .workspace {
+    grid-template: clamp(420px, 67dvh, 650px) auto / minmax(0, 1fr);
+    gap: 0;
+  }
+  .galaxy-panel { grid-area: 2 / 1; border-left: 0; border-top: 1px solid var(--edge); }
+  .galaxy-heading { inset: 20px auto auto 14px; }
+  .galaxy-tools { inset: auto 10px 15px; }
+  .galaxy-tools button { padding-inline: 8px; }
+  .galaxy-marker strong { left: 32px; font-size: 11px; }
+  .galaxy-marker.marker-left strong { left: auto; right: 32px; }
+  .galaxy-key-help { display: none; }
+  #app[data-planet-state="overview"][data-view="simulation"] .scene-settings { top: 113px; }
+  #app[data-planet-state="overview"][data-view="simulation"] .catalog { top: 164px; max-height: calc(100% - 176px); }
+}
+@media (max-width: 430px) {
+  .topbar { gap: 4px; padding-inline: 9px; }
+  .brand { gap: 3px; }
+  .brand-mark { width: 27px; }
+  .brand h1 { font-size: 18px; }
+  .main-nav { gap: 1px; }
+  .main-nav .planet-action { min-height: 44px; padding-inline: 5px; font-size: 12px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
