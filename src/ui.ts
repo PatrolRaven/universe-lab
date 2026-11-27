@@ -24,6 +24,8 @@ const icons = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/>',
   back: '<path d="m11 5-7 7 7 7M4 12h16"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  pause: '<path d="M9 5v14M15 5v14"/>',
+  play: '<path d="m8 5 12 7-12 7z"/>',
 } as const
 
 type Icon = keyof typeof icons
@@ -50,6 +52,7 @@ interface Actions {
   toggleExplorerPanel: () => void
   upgradePlanetSurface: () => void
   planetCameraKey: (key: string) => boolean
+  togglePlayback: () => boolean
   escapeExplorer: () => boolean
   navigate: (view: LabView) => void
   enterSystem: (id: string) => void
@@ -227,6 +230,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
             <div class="view-actions">
               <div class="view-help view-help-mouse">${icon('mouse', 14)} <span>Вращение</span><b>·</b><span>Колесо — масштаб</span><b>·</b><span>Правая кнопка — панорама</span></div>
               <div class="view-help view-help-touch"><span>Вращение</span><b>·</b><span>Сведение пальцев — масштаб</span></div>
+              <button type="button" class="planet-action simulation-toggle" id="simulation-toggle" aria-pressed="false" aria-label="Остановить движение планет">${icon('pause', 15)} Пауза</button>
               <button type="button" class="inspect-link" id="inspect-open" aria-controls="inspector" aria-expanded="false">${icon('info', 14)}<span id="inspect-label"></span></button>
             </div>
             <div class="view-axis" aria-hidden="true"><span></span><span></span><span></span><i>X</i><i>Y</i><i>Z</i></div>
@@ -347,6 +351,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   const z = node('coordinate-z')
   const focus = node<HTMLButtonElement>('focus')
   const overview = node<HTMLButtonElement>('overview')
+  const playback = node<HTMLButtonElement>('simulation-toggle')
   const explore = node<HTMLButtonElement>('explore-planet')
   const exploreLabel = node('explore-planet-label')
   const planetToolbar = node('planet-toolbar')
@@ -546,6 +551,12 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
     actions.focus()
   }, { signal })
   overview.addEventListener('click', actions.overview, { signal })
+  playback.addEventListener('click', () => {
+    const paused = actions.togglePlayback()
+    playback.setAttribute('aria-pressed', String(paused))
+    playback.setAttribute('aria-label', paused ? 'Продолжить движение планет' : 'Остановить движение планет')
+    playback.innerHTML = paused ? `${icon('play', 15)} Продолжить` : `${icon('pause', 15)} Пауза`
+  }, { signal })
   explore.addEventListener('click', () => actions.explore(selectedId), { signal })
   node('object-reference').addEventListener('click', () => actions.openReference(selectedId), { signal })
   node('reference-back').addEventListener('click', actions.closeReference, { signal })

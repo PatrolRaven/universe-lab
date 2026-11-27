@@ -1,7 +1,7 @@
 ﻿const YEARS_PER_SECOND = 0.16
 
 export class SimulationClock {
-  constructor(private previous: number, private reducedMotion: boolean, private visible: boolean) {}
+  constructor(private previous: number, private reducedMotion: boolean, private visible: boolean, private paused = false) {}
 
   rebase(now: number) {
     this.previous = Math.max(this.previous, now)
@@ -17,10 +17,15 @@ export class SimulationClock {
     this.rebase(now)
   }
 
+  setPaused(paused: boolean, now: number) {
+    this.paused = paused
+    this.previous = now
+  }
+
   sample(now: number) {
     const seconds = (now - this.previous) / 1000
     if (seconds <= 0) return 0
     this.previous = now
-    return !this.reducedMotion && this.visible ? seconds * YEARS_PER_SECOND : 0
+    return !this.paused && !this.reducedMotion && this.visible ? seconds * YEARS_PER_SECOND : 0
   }
 }

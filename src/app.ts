@@ -26,6 +26,7 @@ const visited = new Map<string, { simulation: Simulation; selectedId: string }>(
 let loaded = false
 let sceneFade: Animation | undefined
 let frame = 0
+let paused = false
 
 const entries = catalogEntries(scenarios)
 const availableScenarios = [...scenarios, ...atlasScenarios]
@@ -60,6 +61,11 @@ const ui = createUI(document.querySelector('#app')!, scenarios, entries, {
   toggleExplorerPanel,
   upgradePlanetSurface: () => scene?.upgradePlanetSurface(),
   planetCameraKey: key => scene?.planetCameraKey(key) ?? false,
+  togglePlayback: () => {
+    paused = !paused
+    clock.setPaused(paused, performance.now())
+    return paused
+  },
   navigate,
   openCatalogEntry,
   openReference: id => {
