@@ -3,7 +3,7 @@ import type { Body } from './physics'
 import type { Layers } from './scene'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
 import { createLibrary, type CatalogAction, type CatalogEntry } from './library'
-import { articleContent, createArticleNarration, handleMediaError, objectFigure } from './reference-view'
+import { articleContent, handleMediaError, objectFigure } from './reference-view'
 
 const icons = {
   logo: '<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="12" ry="4.4" transform="rotate(-38 12 12)"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
@@ -277,8 +277,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   let selectedSpec: ObjectSpec | undefined
   let libraryOpen = false
   const entriesById = new Map(entries.map(entry => [entry.id, entry]))
-  const narration = createArticleNarration(root, signal)
-  const library = createLibrary(libraryElement, entries, actions.openCatalogEntry, narration, signal)
+  const library = createLibrary(libraryElement, entries, actions.openCatalogEntry, signal)
   navSimulation.addEventListener('click', () => actions.navigate('simulation'), { signal })
   navLibrary.addEventListener('click', () => actions.navigate('library'), { signal })
 
@@ -376,7 +375,6 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   return {
     viewport, labels,
     navigate(view: 'simulation' | 'library', focusTarget?: 'navigation' | 'restore' | 'scene') {
-      narration.stop()
       if (libraryOpen && view !== 'library') library.remember()
       libraryOpen = view === 'library'
       referenceElement.hidden = true
@@ -397,7 +395,6 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       }
     },
     reference(entry: CatalogEntry, fromLibrary: boolean) {
-      narration.stop()
       if (fromLibrary) library.remember()
       libraryOpen = false
       root.dataset.view = 'reference'
@@ -407,9 +404,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       navLibrary.removeAttribute('aria-current')
       navSimulation.removeAttribute('aria-current')
       referenceSections.innerHTML = articleContent(entry, {
-        titleId: 'object-explorer-title', speechAvailable: narration.available,
+        titleId: 'object-explorer-title',
       })
-      narration.attach(referenceSections, entry)
       referenceBackLabel.textContent = fromLibrary ? 'К библиотеке' : 'К системе'
       skip.href = '#object-explorer-title'
       skip.textContent = 'Перейти к справке'
