@@ -144,14 +144,14 @@
 .encyclopedia-intro h2 {
   margin: 8px 0 0;
   color: #edf3fb;
-  font: 600 clamp(43px, 5.8vw, 84px)/.97 var(--display);
+  font: 600 clamp(43px, 5.8vw, 84px)/1.12 var(--display);
   letter-spacing: -.03em;
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
 .encyclopedia-classification { color: #9fdaf2; font-size: 13px; }
-.encyclopedia-english { margin-top: 7px; color: #a8b7cc; font-size: 18px; }
+.encyclopedia-english { display: block; margin-top: 12px; color: #a8b7cc; font-size: 18px; line-height: 1.45; }
 .encyclopedia-overview {
   margin-top: 20px;
   max-width: 54ch;
