@@ -8,6 +8,9 @@
 
 | Файл | Тип | Источник и авторство | Условия использования |
 | --- | --- | --- | --- |
+| [orion-nebula.jpg](orion-nebula.jpg) | Наблюдение Hubble, экранный JPEG | [NASA, ESA, M. Robberto и команда Hubble Treasury](https://esahubble.org/images/heic0601a/) | ESA/Hubble, CC BY 4.0 |
+| [crab-nebula.jpg](crab-nebula.jpg) | Наблюдение Hubble, экранный JPEG | [NASA, ESA, J. Hester и A. Loll (ASU)](https://esahubble.org/images/heic0515a/) | ESA/Hubble, CC BY 4.0 |
+| [trappist-1.jpg](trappist-1.jpg) | Художественная реконструкция, экранный JPEG | [NASA, R. Hurt и T. Pyle](https://www.eso.org/public/images/eso1706o/) | ESO, CC BY 4.0 |
 | [sun.webp](sun.webp) | Ультрафиолетовый снимок, условные цвета | [NASA / Solar Dynamics Observatory / AIA, 304 Å, 4 сентября 2026 года](https://commons.wikimedia.org/wiki/File:SDO_20260904_000842_4096_0304_%28AIA%29.jpg) | [Материал NASA, правила использования NASA Images and Media](https://www.nasa.gov/nasa-brand-center/images-and-media/) |
 | [mercury.webp](mercury.webp) | Композит снимков MESSENGER | [NASA / JHUAPL / Arizona State University / Carnegie Institution of Washington](https://photojournal.jpl.nasa.gov/catalog/PIA11364) | [Материал NASA, правила использования NASA Images and Media](https://www.nasa.gov/nasa-brand-center/images-and-media/) |
 | [venus.webp](venus.webp) | Обработанные снимки Mariner 10 | [NASA / JPL-Caltech](https://science.nasa.gov/photojournal/venus-from-mariner-10/) | [Материал NASA, правила использования NASA Images and Media](https://www.nasa.gov/nasa-brand-center/images-and-media/) |

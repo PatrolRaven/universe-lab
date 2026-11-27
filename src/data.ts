@@ -53,6 +53,9 @@ export interface Scenario {
   objects: ObjectSpec[]
   selection: string
   frame: number
+  timeScale?: number
+  softening?: number
+  stepSize?: number
 }
 
 function star(id: string, name: string, mass: number, radius: number, size: number, color: string): ObjectSpec {

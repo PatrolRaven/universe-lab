@@ -1,8 +1,9 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { applyPlanetCameraKey } from './planet-explorer'
+import { galacticCenterDistance, nearbyRadius, type AtlasMapPoint } from './stellar-atlas'
 
-const solarDistance = 8.178
+const solarDistance = galacticCenterDistance
 export const galaxyDestinations = [
   { id: 'solar', kind: 'observed', position: [0, 0, solarDistance] },
   { id: 'binary', kind: 'educational' },
@@ -19,6 +20,22 @@ function galaxyOverview(camera: THREE.PerspectiveCamera, controls: OrbitControls
   controls.target.set(0, 0, 0)
   camera.position.copy(offset).multiplyScalar(radius / Math.sin(Math.min(halfFov, halfWidth)) * 1.02)
   controls.update()
+}
+
+function neighborhoodRings() {
+  const points: number[] = []
+  for (const distance of [5, 10, 20, nearbyRadius]) {
+    const segments = 96
+    for (let index = 0; index < segments; index++) {
+      const from = index * Math.PI * 2 / segments
+      const to = (index + 0.78) * Math.PI * 2 / segments
+      points.push(distance * Math.cos(from), 0, distance * Math.sin(from),
+        distance * Math.cos(to), 0, distance * Math.sin(to))
+    }
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
+  return new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: '#34506a', transparent: true, opacity: 0.65 }))
 }
 
 function randomSequence() {
@@ -94,11 +111,18 @@ export class Galaxy {
   private framed = false
   private readonly projected = new THREE.Vector3()
   private readonly clouds: ReturnType<typeof cloud>[]
+  private nearby = false
+  private readonly nearbyGuide = neighborhoodRings()
+  private visibleIds = new Set<string>()
+  private selectedId = ''
 
-  constructor(canvas: HTMLCanvasElement, private readonly marker: HTMLButtonElement, compact: boolean) {
+  constructor(canvas: HTMLCanvasElement, private readonly marker: HTMLButtonElement, compact: boolean,
+    private readonly atlasMarkers: readonly { point: AtlasMapPoint; button: HTMLButtonElement }[] = []) {
     const controls = this.controls = new OrbitControls(this.camera, canvas)
     controls.enabled = false
     this.scene.background = new THREE.Color('#050910')
+    this.nearbyGuide.visible = false
+    this.scene.add(this.nearbyGuide)
     controls.enableDamping = !matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.dampingFactor = 0.13
     controls.minDistance = 2.6
@@ -202,13 +226,35 @@ export class Galaxy {
   overview() {
     this.stopMotion()
     galaxyOverview(this.camera, this.controls)
+    if (this.nearby) this.camera.position.multiplyScalar(nearbyRadius / radius)
+    this.controls.update()
   }
 
   locateSun() {
     this.stopMotion()
-    this.camera.position.sub(this.controls.target).setLength(19).add(sun)
-    this.controls.target.copy(sun)
+    const center = this.nearby ? new THREE.Vector3() : sun
+    this.camera.position.sub(this.controls.target).setLength(19).add(center)
+    this.controls.target.copy(center)
     this.controls.update()
+  }
+
+  setAtlas(ids: readonly string[], selected: string, nearby: boolean, focus?: AtlasMapPoint) {
+    this.visibleIds = new Set(ids)
+    this.selectedId = selected
+    if (this.nearby !== nearby) {
+      this.nearby = nearby
+      this.nearbyGuide.visible = nearby
+      this.clouds.slice(1).forEach(cloud => { cloud.visible = !nearby })
+      this.overview()
+    }
+    if (focus) {
+      this.stopMotion()
+      const target = new THREE.Vector3(...(nearby ? focus.local : focus.galactic))
+      this.camera.position.sub(this.controls.target).setLength(nearby ? 12 : 11).add(target)
+      this.controls.target.copy(target)
+      this.controls.update()
+    }
+    this.dirty = true
   }
 
   key(key: string, shift: boolean) {
@@ -228,17 +274,48 @@ export class Galaxy {
     if (!this.dirty) return
     this.dirty = false
     renderer.render(this.scene, this.camera)
-    const point = this.projected.copy(sun).project(this.camera)
+    const used: [number, number][] = []
+    const hosts = new Set<string>()
+    const selected = this.atlasMarkers.find(item => item.point.id === this.selectedId)
+    const markers = selected ? this.atlasMarkers.filter(item => item !== selected) : this.atlasMarkers
+    if (selected && this.visibleIds.has(selected.point.id)) {
+      const host = selected.point.hostId ?? selected.point.id
+      this.placeMarker(selected.button, this.nearby ? selected.point.local : selected.point.galactic, width, height, used, true)
+      if (!selected.button.hidden) hosts.add(host)
+    }
+    if (this.atlasMarkers.length) this.marker.hidden = !this.visibleIds.has('solar')
+    if (!this.marker.hidden || !this.atlasMarkers.length) {
+      this.placeMarker(this.marker, this.nearby ? [0, 0, 0] : galaxyDestinations[0].position, width, height, used)
+    }
+    for (const { point, button } of markers) {
+      const host = point.hostId ?? point.id
+      if (!this.visibleIds.has(point.id) || hosts.has(host)) {
+        button.hidden = true
+        continue
+      }
+      this.placeMarker(button, this.nearby ? point.local : point.galactic, width, height, used, point.id === this.selectedId)
+      if (!button.hidden) hosts.add(host)
+    }
+  }
+
+  private placeMarker(button: HTMLButtonElement, position: readonly [number, number, number],
+    width: number, height: number, used: [number, number][], selected = false) {
+    const point = this.projected.set(...position).project(this.camera)
     const x = (point.x + 1) * width / 2
     const y = (1 - point.y) * height / 2
-    this.marker.hidden = point.z < -1 || point.z > 1 || x < 22 || x > width - 22 || y < 22 || y > height - 22
-    this.marker.style.left = x + 'px'
-    this.marker.style.top = y + 'px'
-    this.marker.classList.toggle('marker-left', x > width / 2)
+    button.hidden = point.z < -1 || point.z > 1 || x < 22 || x > width - 22 || y < 22 || y > height - 22 ||
+      (!selected && used.some(([px, py]) => Math.hypot(px - x, py - y) < 34))
+    if (button.hidden) return
+    used.push([x, y])
+    button.style.left = x + 'px'
+    button.style.top = y + 'px'
+    button.classList.toggle('marker-left', x > width / 2)
   }
 
   dispose() {
     this.controls.dispose()
+    this.nearbyGuide.geometry.dispose()
+    this.nearbyGuide.material.dispose()
     for (const { geometry, material } of this.clouds) {
       geometry.dispose()
       material.dispose()

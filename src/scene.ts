@@ -5,6 +5,7 @@ import type { Simulation } from './physics'
 import { haloMaterial, ringMaterial, surfaceMaterial } from './materials'
 import { addSky } from './sky'
 import { Galaxy } from './galaxy'
+import type { AtlasMapPoint } from './stellar-atlas'
 import { OrbitForecasts, TrailHistory } from './trajectories'
 import { applyPlanetCameraKey, PlanetCameraArc, PlanetGlobe, type ExplorerQuality, type ExplorerState, type ExplorerUpdate } from './planet-explorer'
 
@@ -118,6 +119,7 @@ export class SpaceScene {
     onContextLoss: () => void,
     private readonly onExplorer: ExplorerUpdate,
     marker: HTMLButtonElement,
+    atlasMarkers: readonly { point: AtlasMapPoint; button: HTMLButtonElement }[],
   ) {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('webgl2', { antialias: true, alpha: false })
@@ -136,7 +138,7 @@ export class SpaceScene {
     this.controls.minDistance = MIN_CAMERA_DISTANCE
     this.controls.maxDistance = 48
     this.controls.zoomSpeed = 0.8
-    this.galaxy = new Galaxy(canvas, marker, matchMedia('(max-width: 720px)').matches)
+    this.galaxy = new Galaxy(canvas, marker, matchMedia('(max-width: 720px)').matches, atlasMarkers)
 
     this.controls.addEventListener('change', () => {
       this.dirty = true
@@ -309,6 +311,9 @@ export class SpaceScene {
     this.renderedTime = -Infinity
     this.sampleTime = -Infinity
     this.frame = scenario.frame
+    this.camera.near = Math.min(0.025, this.frame * 0.008)
+    this.camera.updateProjectionMatrix()
+    this.controls.maxDistance = scenario.stepSize === undefined ? 48 : this.frame * 5
     this.direction.set(0, scenario.id === 'solar' ? 0.58 : 0.72, scenario.id === 'solar' ? 0.81 : 0.69).normalize()
     if (scenario.id === 'solar') this.loadSolarMaps()
     this.updatePositions(simulation)
@@ -357,7 +362,7 @@ export class SpaceScene {
     if (this.planetSession) return
     this.focused = this.visuals.find(visual => visual.spec.id === id)
     if (!this.focused) return
-    this.controls.minDistance = Math.max(MIN_CAMERA_DISTANCE, this.focused.radius * 1.18)
+    this.controls.minDistance = Math.max(Math.min(MIN_CAMERA_DISTANCE, this.frame * .06), this.focused.radius * 1.18)
     this.anchor.copy(this.focused.group.position)
     this.view = 'focus'
     this.transition = true
@@ -365,7 +370,7 @@ export class SpaceScene {
 
   overview(immediate = false) {
     if (this.planetSession) return
-    this.controls.minDistance = MIN_CAMERA_DISTANCE
+    this.controls.minDistance = Math.min(MIN_CAMERA_DISTANCE, this.frame * .06)
     this.dirty = true
     this.view = 'overview'
     this.focused = undefined
@@ -624,7 +629,7 @@ export class SpaceScene {
       let distance = this.overviewDistance()
       if (focused) {
         this.aim.copy(focused.group.position)
-        distance = Math.max(1.15, focused.radius * 7) / Math.min(1, this.camera.aspect)
+        distance = Math.max(Math.min(1.15, this.frame * .32), focused.radius * 7) / Math.min(1, this.camera.aspect)
       }
       const ease = this.reducedMotion.matches ? 1 : 1 - Math.exp(-8 * deltaSeconds)
       this.cameraOffset.copy(this.direction).multiplyScalar(distance).add(this.aim)
@@ -656,6 +661,9 @@ export class SpaceScene {
 
   galaxyOverview() { this.galaxy.overview() }
   locateSun() { this.galaxy.locateSun() }
+  setAtlas(ids: readonly string[], selected: string, nearby: boolean, focus?: AtlasMapPoint) {
+    this.galaxy.setAtlas(ids, selected, nearby, focus)
+  }
   galaxyKey(key: string, shift: boolean) { return this.galaxy.key(key, shift) }
   renderGalaxy() { this.galaxy.render(this.renderer, this.width, this.height) }
 

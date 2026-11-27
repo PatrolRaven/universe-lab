@@ -16,9 +16,14 @@ describe('Библиотека небесных тел', () => {
 
   it('включает все предусмотренные тела и не дублирует их при повторе сценария', () => {
     const idsFor = (category: string) => filterCatalog(entries, '', category).map(entry => entry.id).sort()
-    expect(entries).toHaveLength(44)
+    expect(entries).toHaveLength(68)
     expect(new Set(idsFor('all')).size).toBe(entries.length)
-    expect(idsFor('star')).toEqual(['sun'])
+    expect(idsFor('star')).toEqual(['barnard', 'proxima-centauri', 'sirius-a', 'sirius-b', 'sun', 'trappist-1', 'vega', 'wolf-359'])
+    expect(idsFor('exoplanet')).toHaveLength(9)
+    expect(idsFor('multiple-star')).toEqual(['alpha-centauri', 'sirius'])
+    expect(idsFor('nebula')).toHaveLength(2)
+    expect(idsFor('cluster')).toHaveLength(2)
+    expect(idsFor('black-hole')).toHaveLength(2)
     expect(idsFor('planet')).toEqual([...planetIds].sort())
     expect(idsFor('dwarf-planet')).toEqual([...dwarfPlanetIds].sort())
     expect(idsFor('moon')).toEqual([...moonIds].sort())

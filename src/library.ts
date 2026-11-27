@@ -3,8 +3,10 @@ import { explorerProfiles, type ExplorerProfile } from './planet-profiles'
 import { solarCatalog } from './solar-catalog'
 import { articleContent, handleMediaError } from './reference-view'
 import './encyclopedia.css'
+import { atlasCatalogEntries, atlasKinds } from './stellar-atlas'
 
 export const categoryNames = {
+  ...atlasKinds,
   planet: 'Планеты',
   'dwarf-planet': 'Карликовые планеты',
   moon: 'Спутники',
@@ -76,6 +78,7 @@ export function catalogEntries(scenarios: readonly Scenario[]): CatalogEntry[] {
   return [
     ...[...entries.values()].filter(entry => entry.category !== 'model'),
     ...solarCatalog.filter(entry => !entries.has(entry.id)),
+    ...atlasCatalogEntries(),
     ...[...entries.values()].filter(entry => entry.category === 'model'),
   ]
 }
@@ -89,7 +92,7 @@ export function filterCatalog(entries: readonly CatalogEntry[], query: string, c
 }
 
 function normalize(text: string) {
-  return text.toLocaleLowerCase('ru').replaceAll('ё', 'е').trim()
+  return text.toLocaleLowerCase('ru').replaceAll('ё', 'е').replaceAll('’', "'").trim()
 }
 
 export type CatalogAction = 'reference' | 'globe' | 'show'

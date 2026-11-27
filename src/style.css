@@ -604,6 +604,45 @@ svg { flex-shrink: 0; vertical-align: middle; }
 .galaxy-panel h2 { margin-bottom: 10px; font: 600 23px/1.1 var(--display); }
 .galaxy-panel .scenario { width: 100%; }
 .galaxy-panel .scenario[aria-expanded="true"] { background: var(--selected); border-color: #346480; }
+.atlas-controls { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+.atlas-controls input, .atlas-controls select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px;
+  color: var(--text, #eef5ff);
+  background: #101d2c;
+  border: 1px solid #38516a;
+  border-radius: 6px;
+  font: inherit;
+}
+.atlas-controls p { margin: 3px 0 9px; }
+.atlas-results { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; margin-top: 8px; }
+.atlas-result { min-height: 42px; gap: 9px; padding: 7px 10px; text-align: left; }
+.atlas-result::before { content: ''; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: var(--atlas-color); }
+.atlas-detail { display: grid; gap: 8px; padding: 12px; background: #101d2c; border: 1px solid #38516a; border-radius: 8px; margin-top: 8px; }
+.atlas-detail h3 { margin: 0; }
+.atlas-detail p, .atlas-model-label { margin: 0; font-size: 13px; color: var(--muted); }
+.atlas-model-label { margin-left: 9px; text-shadow: 0 1px 4px #050910; }
+.atlas-detail button { min-height: 42px; }
+.atlas-marker, .atlas-result { --atlas-color: #d4e8ff; }
+:is(.atlas-marker, .atlas-result)[data-kind="multiple-star"] { --atlas-color: #ffdb9b; }
+:is(.atlas-marker, .atlas-result)[data-kind="exoplanet"] { --atlas-color: #71e4ef; }
+:is(.atlas-marker, .atlas-result)[data-kind="nebula"] { --atlas-color: #ebadf7; }
+:is(.atlas-marker, .atlas-result)[data-kind="cluster"] { --atlas-color: #bceca9; }
+:is(.atlas-marker, .atlas-result)[data-kind="black-hole"] { --atlas-color: #ffad94; }
+.galaxy-marker.atlas-marker > span {
+  width: 15px;
+  height: 15px;
+  background: #132032;
+  border-color: var(--atlas-color);
+  box-shadow: none;
+}
+.galaxy-marker.atlas-marker > span::after { background: var(--atlas-color); width: 5px; height: 5px; }
+.atlas-marker strong { display: none; }
+.atlas-marker:is(:hover, :focus-visible, [aria-pressed="true"]) { z-index: 1; }
+.atlas-marker:is(:hover, :focus-visible, [aria-pressed="true"]) strong { display: block; }
+#atlas-nearby[aria-pressed="true"] { border-color: #75cfd9; color: #bcf5fa; }
 .galaxy-solar { padding: 12px 2px 0; display: grid; gap: 12px; }
 .galaxy-solar p, .galaxy-sources { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .galaxy-solar strong { color: var(--accent-bright); }

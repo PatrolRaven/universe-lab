@@ -3,7 +3,8 @@ import type { Body } from './physics'
 import type { Layers } from './scene'
 import { galaxyDestinations } from './galaxy'
 import type { ExplorerQuality, ExplorerState } from './planet-explorer'
-import { createLibrary, type CatalogAction, type CatalogEntry } from './library'
+import { createLibrary, filterCatalog, type CatalogAction, type CatalogEntry } from './library'
+import { atlasKinds, atlasMap, atlasObjects, nearbyRadius, type AtlasMapPoint } from './stellar-atlas'
 import { articleContent, handleMediaError, objectFigure } from './reference-view'
 
 const icons = {
@@ -53,6 +54,7 @@ interface Actions {
   navigate: (view: LabView) => void
   enterSystem: (id: string) => void
   galaxyOverview: () => void
+  atlas: (ids: readonly string[], selected: string, nearby: boolean, focus?: AtlasMapPoint) => void
   locateSun: () => void
   galaxyKey: (key: string, shift: boolean) => boolean
   openCatalogEntry: (entry: CatalogEntry, action: CatalogAction) => void
@@ -117,7 +119,17 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       <main class="workspace" id="workspace" aria-label="Орбитальная симуляция">
         <aside class="galaxy-panel" id="galaxy-panel" aria-label="Объекты и модели" hidden>
           <section aria-labelledby="galaxy-targets">
-            <h2 id="galaxy-targets">На карте</h2>
+            <h2 id="galaxy-targets">Звёздный атлас</h2>
+            <div class="atlas-controls">
+              <label for="atlas-query">Поиск объекта</label>
+              <input id="atlas-query" type="search" placeholder="Название или обозначение">
+              <label for="atlas-kind">Слой объектов</label>
+              <select id="atlas-kind">
+                <option value="all">Все объекты</option>
+                ${Object.entries(atlasKinds).map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}
+              </select>
+              <p id="atlas-count" role="status"></p>
+            </div>
             <button type="button" class="scenario" id="galaxy-select" aria-expanded="false" aria-controls="galaxy-solar">
               <span class="scenario-icon">${icon('sun', 19)}</span>
               <span class="scenario-copy"><strong>Солнечная система</strong><small>Локальный рукав Ориона</small></span>
@@ -127,6 +139,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
               <p><strong>≈ 8,18 кпк</strong> от центра Млечного Пути. Расстояние оценено по наблюдениям.</p>
               <button type="button" class="focus-button" data-galaxy-launch="solar">Открыть систему ${icon('arrow', 13)}</button>
             </div>
+            <div id="atlas-detail" class="atlas-detail" hidden></div>
+            <div id="atlas-results" class="atlas-results" aria-label="Объекты атласа"></div>
           </section>
           <section aria-labelledby="galaxy-models">
             <h2 id="galaxy-models">Модели вне карты</h2>
@@ -177,20 +191,23 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
           <div class="galaxy-overlay" id="galaxy-overlay" hidden>
             <div class="galaxy-heading">
               <h2 id="galaxy-title">Млечный Путь</h2>
-              <p>Процедурная 3D-карта</p>
+              <p id="atlas-map-note">Процедурная галактика • положения объектов по каталогам</p>
             </div>
             <button type="button" class="galaxy-marker" id="galaxy-marker" aria-expanded="false" aria-controls="galaxy-solar" hidden>
               <span aria-hidden="true"></span><strong>Солнечная система</strong>
             </button>
+            <div id="atlas-markers"></div>
             <div class="galaxy-tools" aria-label="Камера галактики">
               <button class="planet-action" id="galaxy-overview" type="button">${icon('frame', 17)} Общий вид</button>
               <button class="planet-action" id="galaxy-locate" type="button">${icon('focus', 17)} Найти Солнечную систему</button>
+              <button class="planet-action" id="atlas-nearby" type="button" aria-pressed="false">Окрестности Солнца</button>
             </div>
             <p id="galaxy-key-help" class="galaxy-key-help">Стрелки — вращение · Shift + стрелки — панорама · + / − — масштаб</p>
           </div>
           <div class="viewport-labels" id="viewport-labels"></div>
           <div class="view-header">
             <button class="planet-action" id="galaxy-back" type="button">${icon('back', 16)} К галактике</button>
+            <span id="atlas-model-label" class="atlas-model-label" hidden>Реконструкция орбит</span>
             <h2 id="view-title"></h2>
           </div>
           <div class="planet-toolbar" id="planet-toolbar" hidden>
@@ -292,6 +309,23 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   const galaxySolar = node('galaxy-solar')
   const galaxyOverview = node<HTMLButtonElement>('galaxy-overview')
   const galaxyLocate = node<HTMLButtonElement>('galaxy-locate')
+  const atlasQuery = node<HTMLInputElement>('atlas-query')
+  const atlasKind = node<HTMLSelectElement>('atlas-kind')
+  const atlasResults = node('atlas-results')
+  const atlasDetail = node('atlas-detail')
+  const nearbyButton = node<HTMLButtonElement>('atlas-nearby')
+  const atlasMarkers = atlasMap.filter(point => point.id !== 'solar').map(point => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'galaxy-marker atlas-marker'
+    button.dataset.kind = point.category
+    button.hidden = true
+    button.innerHTML = '<span aria-hidden="true"></span><strong></strong>'
+    button.querySelector('strong')!.textContent = point.name
+    button.setAttribute('aria-label', point.name)
+    node('atlas-markers').append(button)
+    return { point, button }
+  })
   const galaxyLaunches = galaxyPanel.querySelectorAll<HTMLButtonElement>('[data-galaxy-launch]')
   const objectType = node('object-type')
   const objectName = node('object-name')
@@ -344,9 +378,91 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   let hasOpenedSystem = false
   const entriesById = new Map(entries.map(entry => [entry.id, entry]))
   const library = createLibrary(libraryElement, entries, actions.openCatalogEntry, signal)
+  const pointIds = new Set(atlasMarkers.map(({ point }) => point.id))
+  const atlasEntries = entries.filter(entry => pointIds.has(entry.id))
+  let atlasSelection = ''
+  let nearby = false
+  let atlas3D = true
+
+  function updateAtlas(focus?: AtlasMapPoint) {
+    const matches = new Set(filterCatalog(atlasEntries, atlasQuery.value, atlasKind.value).map(entry => entry.id))
+    const points = atlasMap.filter(point => matches.has(point.id) && (!nearby || Math.hypot(...point.local) <= nearbyRadius))
+    const showSun = atlasKind.value === 'all' && (!atlasQuery.value.trim() ||
+      'солнце солнечная система sun solar system'.includes(atlasQuery.value.trim().toLowerCase()))
+    galaxySelect.hidden = !showSun
+    if (!showSun) galaxySolar.hidden = true
+    if (!points.some(point => point.id === atlasSelection)) {
+      atlasSelection = ''
+      atlasDetail.hidden = true
+    }
+    const count = points.length + Number(showSun)
+    node('atlas-count').textContent = count ? `Найдено: ${count}` : 'Объекты в этом слое не найдены'
+    atlasResults.replaceChildren(...points.map(point => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'scenario atlas-result'
+      button.dataset.kind = point.category
+      button.textContent = point.name
+      button.setAttribute('aria-pressed', String(atlasSelection === point.id))
+      button.onclick = () => selectAtlas(point, true)
+      return button
+    }))
+    nearbyButton.setAttribute('aria-pressed', String(nearby))
+    for (const { point, button } of atlasMarkers) button.setAttribute('aria-pressed', String(atlasSelection === point.id))
+    node('galaxy-title').textContent = nearby ? 'Окрестности Солнца' : 'Млечный Путь'
+    node('atlas-map-note').textContent = nearby
+      ? 'Кольца на расстоянии 5, 10, 20 и 30 пк от Солнца'
+      : 'Процедурная галактика • положения объектов по каталогам'
+    actions.atlas([...(showSun ? ['solar'] : []), ...points.map(point => point.id)], atlasSelection, nearby, focus)
+  }
+
+  function selectAtlas(point: AtlasMapPoint, focus: boolean) {
+    const entry = entriesById.get(point.id)
+    if (!entry) return
+    atlasSelection = point.id
+    galaxySolar.hidden = true
+    for (const button of [galaxySelect, galaxyMarker]) button.setAttribute('aria-expanded', 'false')
+    if (focus && Math.hypot(...point.local) <= nearbyRadius && atlas3D) nearby = true
+    const title = document.createElement('h3')
+    title.textContent = entry.name
+    const description = document.createElement('p')
+    description.textContent = `${entry.classification} · ${entry.profile.properties[1][1]}`
+    const article = document.createElement('button')
+    article.type = 'button'
+    article.className = 'planet-action'
+    article.textContent = 'Читать статью'
+    article.onclick = () => actions.openCatalogEntry(entry, 'reference')
+    atlasDetail.replaceChildren(title, description, article)
+    const systemId = atlasObjects.find(object => object.id === point.id)?.systemId
+    if (systemId) {
+      const system = document.createElement('button')
+      system.type = 'button'
+      system.className = 'focus-button'
+      system.textContent = 'Открыть модель'
+      system.disabled = !atlas3D
+      system.onclick = () => {
+        if (entry.scene && point.hostId) actions.openCatalogEntry(entry, 'show')
+        else actions.enterSystem(systemId)
+      }
+      atlasDetail.append(system)
+    }
+    atlasDetail.hidden = false
+    updateAtlas(focus ? point : undefined)
+    article.focus({ preventScroll: true })
+    if (matchMedia('(max-width: 850px)').matches) atlasDetail.scrollIntoView({ block: 'nearest' })
+  }
+
+  atlasQuery.addEventListener('input', () => updateAtlas(), { signal })
+  atlasKind.addEventListener('change', () => updateAtlas(), { signal })
+  nearbyButton.addEventListener('click', () => { nearby = !nearby; updateAtlas() }, { signal })
+  for (const { point, button } of atlasMarkers) button.addEventListener('click', () => selectAtlas(point, false), { signal })
+  updateAtlas()
   function selectSun(fromMap = false) {
+    atlasSelection = ''
+    atlasDetail.hidden = true
     galaxySolar.hidden = false
     for (const button of [galaxySelect, galaxyMarker]) button.setAttribute('aria-expanded', 'true')
+    updateAtlas()
     if (fromMap && matchMedia('(max-width: 850px)').matches) {
       galaxySelect.focus()
       galaxySelect.scrollIntoView({ block: 'nearest' })
@@ -359,6 +475,8 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   }
   galaxyOverview.addEventListener('click', actions.galaxyOverview, { signal })
   galaxyLocate.addEventListener('click', () => {
+    atlasQuery.value = ''
+    atlasKind.value = 'all'
     selectSun()
     actions.locateSun()
   }, { signal })
@@ -464,7 +582,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
   }, { signal })
 
   return {
-    viewport, labels, galaxyMarker,
+    viewport, labels, galaxyMarker, atlasMarkers,
     navigate(view: LabView, focusTarget?: 'navigation' | 'restore' | 'scene') {
       if (libraryOpen && view !== 'library') library.remember()
       libraryOpen = view === 'library'
@@ -505,7 +623,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       navSimulation.removeAttribute('aria-current')
       navGalaxy.removeAttribute('aria-current')
       referenceSections.innerHTML = articleContent(entry, { titleId: 'object-explorer-title' })
-      referenceBackLabel.textContent = fromLibrary ? 'К библиотеке' : 'К системе'
+      referenceBackLabel.textContent = fromLibrary ? 'К библиотеке' : galaxyPanel.hidden ? 'К системе' : 'К атласу'
       skip.href = '#object-explorer-title'
       skip.textContent = 'Перейти к справке'
       node('object-explorer-title').focus({ preventScroll: true })
@@ -514,6 +632,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
     scenario(scenario: Scenario) {
       topSystem.textContent = scenario.name
       viewTitle.textContent = scenario.name
+      node('atlas-model-label').hidden = scenario.timeScale === undefined
       for (const button of scenarioButtons) button.setAttribute('aria-pressed', String(button.dataset.scenario === scenario.id))
       bodySelector.innerHTML = scenario.objects.map(spec => {
         const map = spec.detail?.surfaceMap?.url ?? spec.appearance.thumbnail
@@ -551,7 +670,7 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       if (reveal && compact.matches) showSettings(false)
       if (reveal || !inspector.hidden) showInspector(true)
       mass.textContent = scientific(spec.mass)
-      radius.textContent = format.format(profile.radiusKm)
+      radius.textContent = profile.radiusKm > 0 ? format.format(profile.radiusKm) : '—'
     },
     readings(body: Body) {
       speed.textContent = precise.format(magnitude(body.velocity) * 4.74047)
@@ -618,6 +737,9 @@ export function createUI(root: HTMLElement, scenarios: Scenario[], entries: Cata
       overview.disabled = true
       explore.disabled = true
       galaxyMarker.hidden = true
+      atlas3D = false
+      nearbyButton.disabled = true
+      for (const { button } of atlasMarkers) button.hidden = true
       for (const button of [galaxyOverview, galaxyLocate, ...galaxyLaunches]) button.disabled = true
       library.error(message)
       for (const input of layerInputs) input.disabled = true
